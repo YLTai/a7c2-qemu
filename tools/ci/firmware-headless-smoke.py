@@ -110,6 +110,23 @@ except Exception as exc:
             {'file': Path(path).name, 'line': int(line)}
             for path, line in re.findall(r'File "([^"\n]+\.py)", line (\d+)', private_log)
             if Path(path).name in public_sources][-12:]
+        # Strict list of public C/POSIX calls and compiler helpers used by this demo.
+        allowed_symbols = set(('memcpy memset memmove memcmp strlen strcmp snprintf dprintf puts '
+            'printf fflush _exit syscall __errno_location __stack_chk_fail __memcpy_chk '
+            '__memset_chk __snprintf_chk __printf_chk __libc_start_main __libc_csu_init '
+            '__libc_csu_fini open close read write fstat stat lstat fchmod fcntl '
+            'mkdir unlink rename pipe2 fork waitpid kill clock_gettime poll '
+            'getenv setrlimit prctl opendir readdir closedir dirfd dup2 '
+            'chroot chdir setgroups setresgid setresuid getuid geteuid stdout').split())
+        undefined = re.findall(r'undefined symbol: ([A-Za-z0-9_@.]+)', private_log)
+        result['linker_public_symbols'] = sorted(set(undefined) & allowed_symbols)
+        result['linker_unlisted_symbol_count'] = sum(name not in allowed_symbols for name in undefined)
+        result['compiler_error_locations'] = [
+            {'file': name, 'line': int(line), 'column': int(column)}
+            for name, line, column in re.findall(r'([A-Za-z0-9_-]+\.c):([0-9]+):([0-9]+): (?:fatal )?error:', private_log)
+            if name in ('ram-plugin-boot.c', 'ram-hello.c', 'ramfb-viewer.c')][:16]
+        result['linker_error_kinds'] = {kind: kind in private_log for kind in
+            ('duplicate symbol', 'undefined symbol', 'relocation', 'unable to find library')}
         result['exception_types'] = re.findall(
             r'^(AssertionError|ValueError|RuntimeError|KeyError|TypeError|NameError|AttributeError|FileNotFoundError|PermissionError|OSError|TimeoutError|ImportError|ModuleNotFoundError):',
             private_log, re.MULTILINE)[-4:]
