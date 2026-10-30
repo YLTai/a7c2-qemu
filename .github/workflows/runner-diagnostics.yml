@@ -1,0 +1,44 @@
+name: Read-only runner namespace diagnostics
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/qemu-actions]
+    paths: [.github/workflows/runner-diagnostics.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read identity and confinement state
+        shell: bash
+        run: |
+          set +e
+          id
+          uname -r
+          cat /etc/os-release
+          grep -E '^(Uid|Gid|Cap|NoNewPrivs|Seccomp)' /proc/self/status
+          cat /proc/self/attr/current
+          cat /proc/self/uid_map
+          cat /proc/self/gid_map
+          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone user.max_user_namespaces
+          dpkg-query -W bubblewrap apparmor apparmor-profiles
+          command -v bwrap
+          if test -e /usr/bin/bwrap; then stat -c '%a %U %G %n' /usr/bin/bwrap; fi
+          for path in /sys/module/apparmor/parameters/enabled /sys/kernel/security/apparmor/profiles; do
+            printf '\nREAD %s\n' "$path"
+            cat "$path"
+          done
+          for path in /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict /usr/share/apparmor/extra-profiles/bwrap-userns-restrict; do
+            if test -f "$path"; then
+              printf '\nPROFILE %s\n' "$path"
+              cat "$path"
+            fi
+          done
+          printf '\nCONTAINER INDICATORS\n'
+          systemd-detect-virt
+          test -e /.dockerenv && echo DOCKERENV_PRESENT
+          printf '\nREADABLE KERNEL DENIALS (this fresh VM only)\n'
+          journalctl -k --no-pager -n 300 2>&1 | grep -Ei 'denied|apparmor|permission|not seeing|no journal|no entries'
+          exit 0

@@ -1,8 +1,6 @@
 name: QEMU build and firmware-free smoke
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/qemu-actions]
 permissions:
   contents: read
 concurrency:
