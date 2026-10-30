@@ -85,7 +85,7 @@ printf 'not-an-ELF\n' > "$analysis_dir/menu-root/simulation/ram-plugin-invalid_e
 chmod 0755 "$analysis_dir/menu-root/simulation/ram-plugin-invalid_elf"
 plugin_cases=(hello malformed crash timeout forbidden)
 for index in "${!plugin_cases[@]}"; do
-  clang --target=aarch64-linux-gnu -fuse-ld=lld -nostdlib -static -O2 -fno-builtin -fno-stack-protector \
+  clang --target=aarch64-linux-gnu -fuse-ld=lld -nostdlib -static -O2 -ffreestanding -fno-builtin -fno-stack-protector \
     -Wl,-e,_start,-z,max-page-size=4096 -DRP_CASE="$index" "$source_dir/ram-hello.c" \
     -o "$analysis_dir/menu-root/simulation/ram-plugin-${plugin_cases[$index]}"
 done

@@ -25,6 +25,16 @@
 #include <string.h>
 #include <time.h>
 #include "ram-plugin.h"
+/* Original firmware glibc 2.25 exposes these versioned stat entry points. */
+#ifdef __aarch64__
+extern int __fxstat(int,int,struct stat *);
+extern int __lxstat(int,const char *,struct stat *);
+#define plugin_fstat(fd,st) __fxstat(0,fd,st)
+#define plugin_lstat(path,st) __lxstat(0,path,st)
+#else
+#define plugin_fstat(fd,st) fstat(fd,st)
+#define plugin_lstat(path,st) lstat(path,st)
+#endif
 static int limit(int resource, rlim_t value) { struct rlimit r={value,value};return setrlimit(resource,&r); }
 static int sandbox(void) {
     struct sock_filter code[]={
@@ -71,7 +81,7 @@ static int run(void) {
     char name[128];snprintf(name,sizeof name,"/simulation/ram-plugin-%s",mode);
     /* Plugin bytes are untrusted; cpio may preserve the build user ownership. */
     int input=open(name,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);struct stat st;
-    if(input<0 || fstat(input,&st) || !S_ISREG(st.st_mode) || (st.st_mode&022) || st.st_size<=0 || st.st_size>65536) {
+    if(input<0 || plugin_fstat(input,&st) || !S_ISREG(st.st_mode) || (st.st_mode&022) || st.st_size<=0 || st.st_size>65536) {
       if(input>=0)close(input);
       puts("RAM_PLUGIN_REJECT missing/unsafe executable");return 1;
     }
@@ -82,7 +92,7 @@ static int run(void) {
        fcntl(mem,F_ADD_SEALS,F_SEAL_SEAL|F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_WRITE)) {close(mem);return 2;}
     const char *jail="/tmp/ram-plugin-root";
     if(mkdir(jail,0700) && errno!=EEXIST){close(mem);return 2;}
-    if(lstat(jail,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077)){close(mem);return 2;}
+    if(plugin_lstat(jail,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077)){close(mem);return 2;}
     struct __user_cap_header_struct parent_header={_LINUX_CAPABILITY_VERSION_3,0};
     struct __user_cap_data_struct parent_caps[2]={{0},{0}};
     if(syscall(SYS_capget,&parent_header,parent_caps)||!(parent_caps[0].effective&(1u<<CAP_KILL))){close(mem);return 2;}

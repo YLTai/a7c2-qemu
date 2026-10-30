@@ -89,12 +89,13 @@ static void convert(const unsigned char *p, unsigned char *out) {
     }
 }
 /* Narrow data-only interface: this bridge never loads or executes plugin code. */
+static int view_stat(int fd, struct stat *st);
 static int overlay_read(const char *path, struct rp_frame *frame) {
     memset(frame, 0, sizeof *frame);
     int fd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
     if (fd < 0) return 0;
     struct stat st; unsigned char extra;
-    int ok = !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 &&
+    int ok = !view_stat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 &&
         !(st.st_mode & 022) && st.st_size == sizeof *frame &&
         read(fd, frame, sizeof *frame) == sizeof *frame && read(fd, &extra, 1) == 0 && rp_valid(frame);
     close(fd);
