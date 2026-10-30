@@ -431,7 +431,7 @@ runner=(timeout --signal=TERM --kill-after=2s "${observation_seconds}s")
 if [[ "${QEMU_UI_LIVE:-0}" == 1 ]]; then runner=(exec); fi
 "${runner[@]}" \
   bwrap --unshare-all --die-with-parent --new-session --clearenv \
-    --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib /lib64 \
+    --ro-bind /usr /usr --symlink usr/lib /lib --ro-bind /lib64 /lib64 \
     --proc /proc --dev /dev --tmpfs /tmp \
     --ro-bind "$tool_root" /tools \
     --ro-bind "$bootfs/vmlinux.bin" /kernel.img \

@@ -55,7 +55,8 @@ jobs:
       - name: Compute exact identities
         id: identity
         run: python3 tools/ci/qemu-cache.py key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: source-cache
         with:
           path: source/vendor/qemu-11.1.2.tar.xz
           key: qemu-source-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.source_sha }}
@@ -68,6 +69,11 @@ jobs:
             mv "$archive.part" "$archive"
           fi
           python3 tools/check-source.py 2>&1 | tee ci-logs/source.log
+      - uses: actions/cache/save@v4
+        if: steps.source-cache.outputs.cache-hit != 'true'
+        with:
+          path: source/vendor/qemu-11.1.2.tar.xz
+          key: qemu-source-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.source_sha }}
       - uses: actions/cache/restore@v4
         id: build-cache
         with:

@@ -132,6 +132,8 @@ bwrap --unshare-net --die-with-parent --clearenv --ro-bind / / \
     make -C "$1/subprojects/dtc" -j8 NO_PYTHON=1 NO_YAML=1 EXTRA_CFLAGS=-Wno-error dtc
     "$1/subprojects/dtc/dtc" -I dts -O dtb -o virt-packed.dtb "$2"
   ' build "$src" "$here/runtime/analysis/qemu-virt-board/virt-packed.dts"
+readelf -l "$stage/build/qemu-system-aarch64" | grep 'Requesting program interpreter'
+ls -ld /lib64 /usr/lib64
 QEMU_TEST_BINARY="$stage/build/qemu-system-aarch64" python3 -B "$here/runtime/analysis/test-qemu-native-input.py"
 "$stage/build/qemu-system-aarch64" -display help | grep -x gtk
 "$stage/build/qemu-aarch64" --version

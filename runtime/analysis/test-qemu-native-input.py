@@ -14,7 +14,7 @@ binary = Path(os.environ.get('QEMU_TEST_BINARY', str(BASE.parent / 'sources/qemu
 with tempfile.TemporaryDirectory(prefix='a7c2-qemu-input-') as temporary:
     out = Path(temporary)
     command = ['bwrap', '--unshare-all', '--die-with-parent', '--ro-bind', '/usr', '/usr',
-               '--symlink', 'usr/lib', '/lib', '--symlink', 'usr/lib', '/lib64',
+               '--symlink', 'usr/lib', '/lib', '--ro-bind', '/lib64', '/lib64',
                '--ro-bind', str(binary), '/qemu', '--bind', str(out), '/out',
                '--dev', '/dev', '--proc', '/proc', '/qemu', '-machine', 'virt',
                '-cpu', 'cortex-a35', '-m', '128M', '-nodefaults', '-nic', 'none',
