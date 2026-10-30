@@ -23,7 +23,8 @@ jobs:
       - name: Install official build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 python3-venv python3-pip python3-setuptools python3-wheel ninja-build meson pkg-config bubblewrap patch flex bison git libgtk-3-dev libsdl2-dev libpixman-1-dev libglib2.0-dev libseccomp-dev ca-certificates util-linux xz-utils curl clang lld cpio e2fsprogs dosfstools libc6-dev-arm64-cross libjpeg-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev python3-pil python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 python3-pycryptodome
+          mapfile -t packages < tools/ci/dependencies.txt
+          sudo apt-get install -y "${packages[@]}"
           echo '/usr/bin' >> "$GITHUB_PATH"
           echo '/usr/sbin' >> "$GITHUB_PATH"
       - name: Load reviewed distribution bwrap profile
@@ -77,7 +78,7 @@ jobs:
       - uses: actions/cache/restore@v4
         id: build-cache
         with:
-          key: qemu-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
+          key: qemu-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
           path: |
             runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
             runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
@@ -105,7 +106,7 @@ jobs:
       - uses: actions/cache/save@v4
         if: success() && steps.build-cache.outputs.cache-hit != 'true'
         with:
-          key: qemu-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
+          key: qemu-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
           path: |
             runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
             runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
@@ -120,6 +121,10 @@ jobs:
         if: always()
         with:
           name: qemu-build-logs
-          path: ci-logs/*.log
+          path: |
+            ci-logs/*.log
+            ci-logs/build-identity.json
+            source/ci-build-receipt.json
+            source/build-programs.sha256
           retention-days: 7
           if-no-files-found: ignore

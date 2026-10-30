@@ -28,18 +28,50 @@ def sha(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
+def package_closure():
+    # Fingerprint installed toolchain/dependency closure, not unrelated runner apps.
+    raw = subprocess.check_output(['dpkg-query', '-W',
+        '-f=${binary:Package}\t${Status}\t${Version}\t${Depends}\t${Pre-Depends}\t${Provides}\n']).decode()
+    import re
+    records, names = {}, {}
+    def terms(value):
+        return [re.split(r'[ (]', x.strip(), 1)[0].split(':')[0]
+                for x in re.split(r'[,|]', value) if x.strip()]
+    for line in raw.splitlines():
+        name, status, version, deps, predeps, provides = line.split('\t')
+        if not status.endswith(' ok installed'):
+            continue
+        records[name] = (version, terms(deps + ',' + predeps))
+        for alias in [name.split(':')[0]] + terms(provides):
+            names.setdefault(alias, set()).add(name)
+    roots = Path('tools/ci/dependencies.txt').read_text().split()
+    selected, pending = set(), []
+    for root in roots:
+        if root not in names:
+            raise ValueError('Required package missing: ' + root)
+        pending.extend(names[root])
+    while pending:
+        name = pending.pop()
+        if name in selected:
+            continue
+        selected.add(name)
+        for dependency in records[name][1]:
+            pending.extend(names.get(dependency, ()))
+    return {name: records[name][0] for name in sorted(selected)}
+
+
 def identity():
-    # Conservative: every tracked input, including board/model staging and scripts.
     paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-    paths += [str(p) for p in Path('tools/ci').glob('*') if p.is_file()]
-    paths += [str(p) for p in Path('.github/workflows').glob('*') if p.is_file()]
-    sources = {p: sha(p) for p in sorted(set(paths)) if p and Path(p).is_file()}
-    toolchain = subprocess.check_output([
-        'dpkg-query', '-W', '-f=${binary:Package}=${Version}\n'
-    ]).decode()
+    exact = {'build-qemu.sh', 'tools/ci/qemu-cache.py', 'tools/ci/dependencies.txt',
+             'tools/ci/qemu-smoke.sh', 'runtime/analysis/test-qemu-native-input.py',
+             'runtime/analysis/qemu-virt-board/virt-packed.dts'}
+    prefixes = ('source/', 'report/virtual-pcidma/', 'report/virtual-dma330/',
+                'report/virtual-atu/')
+    paths = set(p for p in paths if p in exact or p.startswith(prefixes)) | exact
+    sources = {p: sha(p) for p in sorted(paths)}
     versions = {tool: subprocess.check_output([tool, '--version']).decode()
                 for tool in ('cc', 'c++', 'python3', 'meson', 'ninja', 'bwrap')}
-    return {'source': sources, 'packages': toolchain, 'versions': versions,
+    return {'source': sources, 'packages': package_closure(), 'versions': versions,
             'os': Path('/etc/os-release').read_text(), 'arch': platform.machine(),
             'runner_image': os.environ.get('ImageVersion', '')}
 
@@ -49,10 +81,12 @@ def key():
 mode = sys.argv[1]
 if mode == 'key':
     manifest = json.loads(Path('source/manifest.json').read_text())
+    Path('ci-logs').mkdir(exist_ok=True)
+    Path('ci-logs/build-identity.json').write_text(json.dumps(identity(), sort_keys=True, indent=2)+'\n')
     print('source_sha=' + manifest['base_sha256'])
     print('build_key=' + key())
 elif mode == 'seal':
-    RECEIPT.write_text(json.dumps({'key': key(), 'files': {p: sha(p) for p in FILES}}, indent=2)+'\n')
+    RECEIPT.write_text(json.dumps({'key': key(), 'identity': identity(), 'files': {p: sha(p) for p in FILES}}, indent=2)+'\n')
 elif mode == 'verify':
     receipt = json.loads(RECEIPT.read_text())
     if receipt['key'] != key() or set(receipt['files']) != set(FILES):
