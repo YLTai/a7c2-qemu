@@ -22,6 +22,7 @@ static struct sock_filter saved[64];
 static unsigned saved_count;
 int captured_prctl(int option, ...) {
     va_list args; va_start(args,option);
+    if(option==PR_GET_SECCOMP){va_end(args);return 0;}
     if(option==PR_SET_SECCOMP) {
         assert(va_arg(args,int)==SECCOMP_MODE_FILTER);
         struct sock_fprog *p=va_arg(args,struct sock_fprog*);

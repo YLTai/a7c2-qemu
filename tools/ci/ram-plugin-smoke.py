@@ -64,6 +64,13 @@ def command(vm, case):
             if rejected:
                 sig, code, timeout, size = map(int, rejected.groups())
                 record.update(signal=sig, exit=code, timed_out=bool(timeout), output_bytes=size)
+            unsupported = re.search(r'RAM_PLUGIN_UNSUPPORTED seccomp_query errno=(\d+)', text)
+            if unsupported:
+                record.update(unsupported='seccomp_query', errno=int(unsupported.group(1)))
+            if 160 <= record.get('exit', -1) <= 199:
+                record.update(isolation_failure='no_new_privs', errno=record['exit']-160)
+            if 200 <= record.get('exit', -1) <= 239:
+                record.update(isolation_failure='seccomp_filter', errno=record['exit']-200)
             if 'RAM_PLUGIN_UNSUPPORTED memfd' in text:
                 record['unsupported'] = 'memfd'
             rc = re.search(r'RAM_PLUGIN_RC=(\d+)', text)

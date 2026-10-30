@@ -54,7 +54,8 @@ static int sandbox(void) {
       BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AT_EMPTY_PATH,0,1),
       BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW), BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL)};
     struct sock_fprog program={sizeof code/sizeof code[0],code};
-    if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0) || prctl(PR_SET_SECCOMP,SECCOMP_MODE_FILTER,&program)) return -1;
+    if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0)) return -1;
+    if(prctl(PR_SET_SECCOMP,SECCOMP_MODE_FILTER,&program)) return -2;
     return 0;
 }
 static int close_others(void) {
@@ -78,6 +79,10 @@ static int run(void) {
     if(which==8)return 2;
     unlink(RP_FRAME); /* every failed invocation restores the unobscured camera frame */
     if(which==7){puts("RAM_PLUGIN_OFF");return 0;}
+    errno=0;
+    if(prctl(PR_GET_SECCOMP,0,0,0,0)<0) {
+      dprintf(1,"RAM_PLUGIN_UNSUPPORTED seccomp_query errno=%d\n",errno);return 2;
+    }
     char name[128];snprintf(name,sizeof name,"/simulation/ram-plugin-%s",mode);
     /* Plugin bytes are untrusted; cpio may preserve the build user ownership. */
     int input=open(name,O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);struct stat st;
@@ -109,7 +114,8 @@ static int run(void) {
       struct __user_cap_data_struct caps[2]={{0},{0}};
       if(syscall(SYS_capset,&cap_header,caps)||syscall(SYS_capget,&cap_header,caps))_exit(124);
       if(caps[0].effective||caps[0].permitted||caps[0].inheritable||caps[1].effective||caps[1].permitted||caps[1].inheritable)_exit(124);
-      if(sandbox())_exit(125);
+      int restricted=sandbox();
+      if(restricted){int code=errno;_exit((restricted==-1?160:200)+(code>0&&code<40?code:39));}
       char *argv[]={"ram-plugin",NULL};char *envp[]={NULL};
       syscall(SYS_execveat,3,"",argv,envp,AT_EMPTY_PATH);_exit(126);
     }
