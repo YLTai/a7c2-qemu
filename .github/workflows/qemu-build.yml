@@ -1,0 +1,98 @@
+name: QEMU build and firmware-free smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/qemu-actions]
+permissions:
+  contents: read
+concurrency:
+  group: qemu-build-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install official build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 python3-venv python3-pip python3-setuptools python3-wheel ninja-build meson pkg-config bubblewrap patch flex bison git libgtk-3-dev libsdl2-dev libpixman-1-dev libglib2.0-dev libseccomp-dev ca-certificates util-linux xz-utils curl clang lld cpio e2fsprogs dosfstools libc6-dev-arm64-cross libjpeg-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev python3-pil python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 python3-pycryptodome
+          echo '/usr/bin' >> "$GITHUB_PATH"
+          echo '/usr/sbin' >> "$GITHUB_PATH"
+      - name: Check dependencies and namespace support
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          bash tools/check-host.sh 2>&1 | tee ci-logs/host.log
+          bwrap --unshare-all --die-with-parent --ro-bind / / --dev /dev --proc /proc /bin/true
+      - name: Compute exact identities
+        id: identity
+        run: python3 tools/ci/qemu-cache.py key >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: source/vendor/qemu-11.1.2.tar.xz
+          key: qemu-source-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.source_sha }}
+      - name: Download missing source and verify all patches
+        run: |
+          set -o pipefail
+          archive=source/vendor/qemu-11.1.2.tar.xz
+          if ! test -f "$archive"; then
+            curl --fail --location --retry 3 https://download.qemu.org/qemu-11.1.2.tar.xz -o "$archive.part"
+            mv "$archive.part" "$archive"
+          fi
+          python3 tools/check-source.py 2>&1 | tee ci-logs/source.log
+      - uses: actions/cache/restore@v4
+        id: build-cache
+        with:
+          key: qemu-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
+          path: |
+            runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
+            runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
+            runtime/sources/qemu-tools/usr/lib/libfdt.so.1
+            runtime/sources/qemu-tools/usr/bin/dtc
+            runtime/analysis/qemu-virt-board/virt-packed.dtb
+            source/pci-hardware-build.json
+            source/build-programs.sha256
+            source/ci-build-receipt.json
+      - name: Validate cache or build from pinned source
+        run: |
+          set -o pipefail
+          if python3 tools/ci/qemu-cache.py verify > ci-logs/cache.log 2>&1; then
+            cat ci-logs/cache.log
+          else
+            cat ci-logs/cache.log
+            bash build-qemu.sh 2>&1 | tee ci-logs/build.log
+            python3 tools/ci/qemu-cache.py seal
+            python3 tools/ci/qemu-cache.py verify
+          fi
+      - name: Verify versions, machine, and synthetic QMP input
+        run: |
+          set -o pipefail
+          bash tools/ci/qemu-smoke.sh 2>&1 | tee ci-logs/smoke.log
+      - uses: actions/cache/save@v4
+        if: success() && steps.build-cache.outputs.cache-hit != 'true'
+        with:
+          key: qemu-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.build_key }}
+          path: |
+            runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
+            runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
+            runtime/sources/qemu-tools/usr/lib/libfdt.so.1
+            runtime/sources/qemu-tools/usr/bin/dtc
+            runtime/analysis/qemu-virt-board/virt-packed.dtb
+            source/pci-hardware-build.json
+            source/build-programs.sha256
+            source/ci-build-receipt.json
+      - name: Upload only build verification logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qemu-build-logs
+          path: ci-logs/*.log
+          retention-days: 7
+          if-no-files-found: ignore
