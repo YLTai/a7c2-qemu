@@ -76,6 +76,15 @@ except Exception as exc:
     if log_path and Path(log_path).is_file():
         private_log = Path(log_path).read_text(errors='replace')
         result['log_bytes'] = Path(log_path).stat().st_size
+        import re
+        public_sources = {p.name for p in root.rglob('*.py') if '.git' not in p.parts}
+        result['traceback_frames'] = [
+            {'file': Path(path).name, 'line': int(line)}
+            for path, line in re.findall(r'File "([^"\n]+\.py)", line (\d+)', private_log)
+            if Path(path).name in public_sources][-12:]
+        result['exception_types'] = re.findall(
+            r'^(AssertionError|ValueError|RuntimeError|KeyError|TypeError|NameError|AttributeError|FileNotFoundError|PermissionError|OSError|TimeoutError|ImportError|ModuleNotFoundError):',
+            private_log, re.MULTILINE)[-4:]
         result['log_flags'] = {name: token in private_log for name, token in {
             'observer_build_failed': 'observer build failed',
             'initramfs_build_failed': 'initramfs build failed',
