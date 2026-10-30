@@ -118,6 +118,12 @@ jobs:
             source/pci-hardware-build.json
             source/build-programs.sha256
             source/ci-build-receipt.json
+      - name: Install guest helper cross compiler
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        run: |
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc --version
+          aarch64-linux-gnu-ld --version
       - name: Download private firmware input
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         env:
