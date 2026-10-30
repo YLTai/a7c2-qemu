@@ -84,6 +84,7 @@ class VM:
         if native_display not in (None, 'none', 'gtk', 'sdl'):
             raise ValueError('不支持的原生显示后端')
         self.command = command or ['bash', str(BASE / 'run-menu-probe.sh')]
+        self.plugin_result = None
         self.mock = command is not None
         self.supports_input_lifecycle = not self.mock
         self.input_lifecycle = False
@@ -198,7 +199,7 @@ class VM:
                         can_start=not (self.thread and self.thread.is_alive()) and not (self.owned_process and self.owned_process.poll() is None)
                             and not self.cleanup_error and self.host_sd_context is None and self.instance_lease is None,
                         can_stop=self.state in ('starting','running','faulted'),
-                        native_display=self.native_display, mock=self.mock, custom_firmware=self.custom_firmware,sd_export=self.sd_export,
+                        plugin_result=self.plugin_result, native_display=self.native_display, mock=self.mock, custom_firmware=self.custom_firmware,sd_export=self.sd_export,
                         wifi=self.wifi, usb_net=self.usb_net,
                         sd_card=self.sd_card,
                         settings_persistent=self.instance is not None,settings_generation=self.settings_generation,
@@ -262,6 +263,10 @@ class VM:
                 if not self.input_lifecycle:
                     raise ValueError('当前输入通道不支持按下/释放生命周期')
                 camera_input_module().validate_request(command)
+            elif (isinstance(command,dict) and set(command)=={'action','case'} and command['action']=='ram_plugin'
+                  and command['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off')
+                  and os.environ.get('A7C2_RAM_PLUGIN')=='1' and not self.mock):
+                pass
             elif command == {'action': 'snapshot'}:
                 pass
             elif command=={'action':'export_sd'} and self.natural_boot and not self.mock:
@@ -512,6 +517,8 @@ class VM:
                         if 'source' in info:self.snapshot['source']=info['source']
                         self.stale, self.error = False, ''
                         self.event(f'快照 #{self.snapshot["number"]} 已校验；事务 {info["sequence"]}')
+                    elif command['action'] == 'ram_plugin' and reply.get('type') == 'ram_plugin':
+                        self.plugin_result = reply
                     elif command['action'] == 'camera_input' and reply.get('type') == 'camera_input' and reply.get('request') == command:
                         self.input_state = reply['input_state']
                         if reply.get('ok') is True:

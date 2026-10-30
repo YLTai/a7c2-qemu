@@ -534,6 +534,12 @@ def run_live(proc, out, descriptor, display_capture=None, sd_export=None, networ
                 except Exception as error:result={'type':'sd_export','ok':False,'error':f'{type(error).__name__}: {error}'}
                 if input_session is not None:result['input_state']=input_session.status()
                 if late_passive is not None:result['post_shutter_observation']=late_passive
+            elif (action == 'ram_plugin' and set(request) == {'action','case'}
+                  and request['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off')
+                  and os.environ.get('A7C2_RAM_PLUGIN') == '1'):
+                mode=request['case']
+                output=live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
+                result={'type':'ram_plugin','case':mode,'output':output.decode('utf-8','replace')[-2048:]}
             elif action == 'snapshot' and set(request) == {'action'}:
                 try:
                     if display_capture is not None:

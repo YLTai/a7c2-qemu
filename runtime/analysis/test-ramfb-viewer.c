@@ -117,6 +117,15 @@ int main(void) {
     convert(raw+HOSD_HEADER+sizeof(struct hosd_metadata),output);
     for(unsigned i=0;i<sizeof output;++i) assert(output[i]==0);
     close(s.fd); assert(!unlink(path)); assert(!rmdir(directory));
+    struct rp_frame overlay={.magic="A7OVL001",.width=RP_WIDTH,.height=RP_HEIGHT};
+    overlay.mask[0]=255;overlay.mask[RP_WIDTH*RP_HEIGHT-1]=255;
+    assert(rp_valid(&overlay));overlay_blend(output,&overlay);
+    for(unsigned y=0;y<480;y++)for(unsigned x=0;x<640;x++) {
+        unsigned at=4*(y*640+x);
+        int painted=(x==16&&y==16)||(x==16+RP_WIDTH-1&&y==16+RP_HEIGHT-1);
+        assert(output[at]==0&&output[at+1]==(painted?255:0)&&output[at+2]==(painted?255:0)&&output[at+3]==0);
+    }
+    assert(!overlay_read(path,&overlay));assert(!rp_valid(&overlay));
     static const char result[]="RAMFB_TEST_PASS: parser, alpha/colors, BE config/DMA, error/timeout, inode and retained-source policy (mock MMIO only)\n";
     assert(write(1,result,sizeof result-1)==sizeof result-1);
     return 0;

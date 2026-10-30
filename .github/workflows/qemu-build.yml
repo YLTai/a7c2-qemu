@@ -143,6 +143,19 @@ jobs:
         env:
           A7C2_SPARSE_RAM: '1'
         run: python3 tools/ci/firmware-headless-smoke.py
+      - name: Verify plugin filter and display parser logic
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        run: |
+          cc -O2 -Wall -Wextra -Werror tools/ci/test-ram-plugin-filter.c -o "$RUNNER_TEMP/ram-plugin-filter-test"
+          "$RUNNER_TEMP/ram-plugin-filter-test"
+          cc -O2 -Wall -Wextra -Werror runtime/analysis/test-ramfb-viewer.c -o "$RUNNER_TEMP/ramfb-unit-test"
+          "$RUNNER_TEMP/ramfb-unit-test"
+      - name: Real guest RAM plugin and recovery tests
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        timeout-minutes: 30
+        env:
+          A7C2_SPARSE_RAM: '1'
+        run: python3 tools/ci/ram-plugin-smoke.py
       - name: Upload only real screenshot and result
         uses: actions/upload-artifact@v4
         if: always() && github.event_name == 'workflow_dispatch' && inputs.firmware
@@ -151,6 +164,8 @@ jobs:
           path: |
             ci-firmware-evidence/result.json
             ci-firmware-evidence/firmware-screen.png
+            ci-firmware-evidence/plugin-result.json
+            ci-firmware-evidence/plugin-*.png
           retention-days: 7
           if-no-files-found: ignore
       - name: Upload only build verification logs

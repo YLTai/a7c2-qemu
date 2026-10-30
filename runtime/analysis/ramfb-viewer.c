@@ -11,6 +11,7 @@
 #include <sys/file.h>
 #include <signal.h>
 #include "headless-osd.h"
+#include "ram-plugin.h"
 
 #define RAMFB_BASE UINT64_C(0x41e100000)
 #define RAMFB_SIZE 0x500000U
@@ -86,6 +87,26 @@ static void convert(const unsigned char *p, unsigned char *out) {
         out[4*i+2] = ((v >> 12) * 17 * a + 7) / 15;
         out[4*i+3] = 0;
     }
+}
+/* Narrow data-only interface: this bridge never loads or executes plugin code. */
+static int overlay_read(const char *path, struct rp_frame *frame) {
+    memset(frame, 0, sizeof *frame);
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+    if (fd < 0) return 0;
+    struct stat st; unsigned char extra;
+    int ok = !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == 0 &&
+        !(st.st_mode & 022) && st.st_size == sizeof *frame &&
+        read(fd, frame, sizeof *frame) == sizeof *frame && read(fd, &extra, 1) == 0 && rp_valid(frame);
+    close(fd);
+    if (!ok) memset(frame, 0, sizeof *frame);
+    return ok;
+}
+static void overlay_blend(unsigned char *pixels, const struct rp_frame *frame) {
+    for (unsigned y=0; y<RP_HEIGHT; y++) for (unsigned x=0; x<RP_WIDTH; x++)
+        if (frame->mask[y*RP_WIDTH+x]) {
+            unsigned offset=4*((y+16)*640+x+16);
+            pixels[offset]=0; pixels[offset+1]=255; pixels[offset+2]=255; pixels[offset+3]=0;
+        }
 }
 static int config(unsigned char *cfg, unsigned char *dma, unsigned slot, unsigned selector) {
     if (slot > 1 || selector < 0x20 || selector >= 0x4000) return -1;
@@ -278,6 +299,8 @@ static int run(void) {
              (unsigned long long)(RAMFB_BASE + RAMFB_CFG));
     record("INIT", init, raw, 0);
     unsigned slot = 1, ticks = 0;
+    struct rp_frame previous_overlay = {0};
+    int previous_overlay_valid = 0;
     for (;;) {
         usleep(100000); ++ticks;
         int next = open(HOSD_PATH, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
@@ -288,6 +311,11 @@ static int run(void) {
         struct stat st;
         const char *err = NULL;
         int action = snapshot(&s, next, raw, &st, &err);
+        struct rp_frame overlay;
+        int overlay_valid = overlay_read(RP_FRAME, &overlay);
+        int overlay_changed = overlay_valid != previous_overlay_valid ||
+            memcmp(&overlay, &previous_overlay, sizeof overlay);
+        if (action >= 0 && overlay_changed && !validate(raw, HOSD_BYTES)) action = 2;
         if (action <= 0) {
             close(next);
             if (action < 0) record("REJECT", err, raw, slot);
@@ -296,12 +324,14 @@ static int run(void) {
         if (action == 2) {
             unsigned target = slot ^ 1;
             convert(raw + HOSD_HEADER + sizeof(struct hosd_metadata), pool + target * RAMFB_SLOT);
+            if (overlay_valid) overlay_blend(pool + target * RAMFB_SLOT, &overlay);
             int result = submit(&b, pool, target, selector);
             if (result) {
                 record("FAIL", result == -2 ? "DMA timeout; state uncertain" : "DMA error", raw, slot);
                 close(next); return 1;
             }
             slot = target;
+            previous_overlay = overlay; previous_overlay_valid = overlay_valid;
         }
         commit(&s, next, &st, raw);
         record(action == 2 ? "SUBMITTED" : "RETAINED", "DMA is not screenshot proof", raw, slot);

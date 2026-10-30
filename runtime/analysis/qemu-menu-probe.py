@@ -859,6 +859,16 @@ for path in [Path(command[-1]), base / 'qemu-menu-probe.py', base / 'backup_prof
              base / 'gpe-raster.c', base / 'headless-osd.c', base / 'headless-osd.h',
              base / 'headless-osd-export.c', base / 'headless_osd_capture.py',
              base / 'ramfb-viewer.c', base / 'menu-root/simulation/ramfb-viewer',
+             base / 'ram-plugin.h',
+             base / 'ram-plugin-boot.c',
+             base / 'ram-hello.c',
+             base / 'menu-root/simulation/ram-plugin-boot',
+             base / 'menu-root/simulation/ram-plugin-hello',
+             base / 'menu-root/simulation/ram-plugin-malformed',
+             base / 'menu-root/simulation/ram-plugin-crash',
+             base / 'menu-root/simulation/ram-plugin-timeout',
+             base / 'menu-root/simulation/ram-plugin-forbidden',
+             base / 'menu-root/simulation/ram-plugin-invalid_elf',
              base / 'mutex-trace.c', base / 'menu-root/simulation/mutex-trace.so',
              base / 'guest-overlay/simulation/input-state.sh',
              base / 'menu-root/simulation/headless-osd-export',
@@ -943,6 +953,10 @@ if args.initramfs:
             expected_guest[FONT_GUEST+'/'+name]=digest
     if gui_models:
         expected_guest['simulation/gui-model-export']=manifest['files'][str(base/'menu-root/simulation/gui-model-export')]
+    if os.environ.get('A7C2_RAM_PLUGIN') == '1':
+        for name in ('boot','hello','malformed','crash','timeout','forbidden','invalid_elf'):
+            guest='simulation/ram-plugin-'+name
+            expected_guest[guest]=manifest['files'][str(base/'menu-root'/guest)]
     if live_fd or args.headless_osd:
         expected_guest['simulation/headless-osd-export']=manifest['files'][str(base/'menu-root/simulation/headless-osd-export')]
     if live_fd or os.environ.get('MENU_KEY_INJECT'):
@@ -1238,6 +1252,8 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                     setup += ["export QEMU_SOFTWARE_GPE=1"]
                 if args.headless_osd:
                     setup += ["export MENU_HEADLESS_OSD=1"]
+                if os.environ.get('A7C2_RAM_PLUGIN') == '1':
+                    setup += ["RAM_PLUGIN_CASE=hello /simulation/ram-plugin-boot || echo RAM_PLUGIN_BOOT_REJECT"]
                 if args.native_display is not None:
                     setup += ["/simulation/ramfb-viewer >/dev/null &",
                               "echo RAMFB_VIEWER_PID=$!"]
