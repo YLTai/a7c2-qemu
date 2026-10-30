@@ -62,6 +62,32 @@ except Exception as exc:
     result['error_type'] = type(exc).__name__
     result['vm_state'] = vm.status()['state']
     # Only fixed diagnostic flags; never publish exception or guest log text.
+    latest = root / 'runtime/analysis/latest-menu-run.txt'
+    if latest.is_file():
+        run_path = Path(latest.read_text().strip()).resolve()
+        runs = (root / 'runtime/analysis/menu-runs').resolve()
+        if run_path.parent == runs and (run_path / 'console.log').is_file():
+            private_console = (run_path / 'console.log').read_text(errors='replace')
+            result['console_bytes'] = (run_path / 'console.log').stat().st_size
+            result['console_flags'] = {name: token.lower() in private_console.lower() for name, token in {
+                'missing_file': 'No such file or directory',
+                'missing_command': 'command not found',
+                'permission_denied': 'Permission denied',
+                'operation_denied': 'Operation not permitted',
+                'memory_allocation': 'Cannot allocate memory',
+                'bwrap_failure': 'bwrap:',
+                'qemu_failure': 'qemu-system-aarch64:',
+                'invalid_parameter': 'Invalid parameter',
+                'unsupported_option': 'unrecognized option',
+                'missing_rom': 'Could not load ROM',
+                'missing_kernel': 'could not load kernel',
+                'missing_bus': 'No bus',
+                'unknown_device': 'not a valid device model',
+                'seccomp_failure': 'seccomp',
+                'socket_failure': 'socket',
+                'traceback': 'Traceback (most recent call last)',
+                'kernel_started': 'Booting Linux',
+            }.items()}
     state = vm.status()
     private_error = state.get('error', '')
     result['diagnostics'] = {name: token in private_error for name, token in {
@@ -77,7 +103,9 @@ except Exception as exc:
         private_log = Path(log_path).read_text(errors='replace')
         result['log_bytes'] = Path(log_path).stat().st_size
         import re
-        public_sources = {p.name for p in root.rglob('*.py') if '.git' not in p.parts}
+        import subprocess
+        tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+        public_sources = {Path(p).name for p in tracked if p.endswith('.py')}
         result['traceback_frames'] = [
             {'file': Path(path).name, 'line': int(line)}
             for path, line in re.findall(r'File "([^"\n]+\.py)", line (\d+)', private_log)
