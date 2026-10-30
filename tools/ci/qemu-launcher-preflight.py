@@ -10,6 +10,7 @@ import sys
 ROOT = Path.cwd()
 sys.path.insert(0, str(ROOT / 'runtime/analysis'))
 from menu_live import connect_in_run
+print(json.dumps({'memory_kib': {line.split(':')[0]: int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.split(':')[0] in ('MemTotal','SwapTotal','CommitLimit','Committed_AS')}, 'overcommit_memory': Path('/proc/sys/vm/overcommit_memory').read_text().strip()}), flush=True)
 binary_dir = ROOT / 'runtime/sources/qemu-11.1.2/build-sony-ui'
 with tempfile.TemporaryDirectory(prefix='qemu-launcher-preflight-') as directory:
     out = Path(directory)
@@ -19,7 +20,8 @@ with tempfile.TemporaryDirectory(prefix='qemu-launcher-preflight-') as directory
         '--ro-bind',str(binary_dir),'/tools','--bind',str(out),'/out',
         '--chdir','/','--setenv','LD_LIBRARY_PATH','/tools/usr/lib','--setenv','LC_ALL','C',
         '--setenv','QEMU_SONY_TIMERS','1','--setenv','QEMU_SONY_USB_NET','1',
-        '/tools/qemu-system-aarch64','-machine','virt,secure=off,gic-version=2',
+        '/tools/qemu-system-aarch64','-machine','virt,secure=off,gic-version=2,memory-backend=a7c2-ram',
+        '-object','memory-backend-ram,id=a7c2-ram,size=24576M,reserve=off,prealloc=off,dump=off',
         '-cpu','cortex-a35','-smp','1','-m','24576','-nodefaults','-display','none',
         '-device','ramfb,id=a7c2-screen','-monitor','none','-serial','none','-nic','none',
         '-netdev','stream,id=sony_net,addr.type=unix,addr.path=/out/ethernet.sock,server=on',

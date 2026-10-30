@@ -423,6 +423,16 @@ runpy.run_path(str(Path(sys.argv[1])/'native_rc_board.py'))['require_binary'](
     Path(sys.argv[2]),reference=sys.argv[3]=='1',handoff=sys.argv[4]=='1',sa_data=sys.argv[5]=='1',sa_complete=sys.argv[6]=='1')
 PY
 fi
+# Optional process-local sparse allocation for constrained test runners.
+# Never changes host overcommit settings; QEMU rejects unsupported host policies.
+machine_config='virt,secure=off,gic-version=2'
+memory_backend_args=()
+case "${A7C2_SPARSE_RAM:-0}" in
+  0) ;;
+  1) machine_config+=',memory-backend=a7c2-ram'
+     memory_backend_args=(-object "memory-backend-ram,id=a7c2-ram,size=${memory_config}M,reserve=off,prealloc=off,dump=off") ;;
+  *) echo 'Invalid sparse RAM option' >&2; exit 2 ;;
+esac
 observation_seconds="${QEMU_TIMEOUT_SECONDS:-15}"
 [[ "$observation_seconds" =~ ^[0-9]+$ ]] || { echo 'Invalid timeout' >&2; exit 2; }
 # Exit 124 means the observation window elapsed; zero allows an interactive session.
@@ -442,7 +452,7 @@ if [[ "${QEMU_UI_LIVE:-0}" == 1 ]]; then runner=(exec); fi
     "${pcidma_environment[@]}" \
     "${display_environment[@]}" \
     "/tools/$binary_relative" \
-      -machine virt,secure=off,gic-version=2 -cpu cortex-a35 -smp "$cpu_count" -m "$memory_config" \
+      -machine "$machine_config" "${memory_backend_args[@]}" -cpu cortex-a35 -smp "$cpu_count" -m "$memory_config" \
       ${QEMU_ICOUNT_ARGS:-} \
       -nodefaults "${display_args[@]}" -monitor none -serial stdio -nic none \
       -no-reboot -sandbox on -qmp unix:/out/qmp.sock,server=on,wait=off \
