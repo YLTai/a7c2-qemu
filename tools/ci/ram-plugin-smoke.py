@@ -14,6 +14,7 @@ ROOT = Path.cwd()
 sys.path.insert(0, str(ROOT / 'runtime/analysis'))
 from menu_control import VM
 from settings_instance import default_instance
+from guest_test_support import close_vm, matches_yellow_mask
 
 os.environ['A7C2_RAM_PLUGIN'] = '1'
 OUT = ROOT / 'ci-firmware-evidence'
@@ -112,10 +113,10 @@ def screenshot(vm, overlay, filename):
                     data = vm.png
                 with Image.open(io.BytesIO(data)) as image:
                     pixels = image.convert('RGB')
-                    shown = all(pixels.getpixel(point) == (255,255,0) for point in YELLOW_PIXELS)
+                    mask_matches = matches_yellow_mask(pixels, YELLOW_PIXELS, overlay)
                     colors = pixels.crop((0,50,640,480)).getcolors(640*480)
                     camera_visible = len(colors) > 1 and sum(count for count,color in colors if max(color)>16) > 500
-                if shown == overlay and camera_visible:
+                if mask_matches and camera_visible:
                     (OUT / filename).write_bytes(data)
                     return hashlib.sha256(data).hexdigest()
                 break
@@ -136,7 +137,9 @@ try:
         digest = screenshot(vm, case == 'hello', 'plugin-'+case+'.png')
         RESULT['cases'][-1]['screenshot_sha256'] = digest
     PHASE = 'restart'
-    vm.close()
+    closed, RESULT['restart_close_attempts'] = close_vm(vm)
+    if not closed:
+        raise RuntimeError('Normal save/close failed before restart')
     vm = None
     vm = start()
     ready(vm)
@@ -148,9 +151,11 @@ except Exception as error:
     RESULT.update(failed_phase=PHASE, error_type=type(error).__name__)
 finally:
     try:
-        if vm:
-            vm.close()
         RESULT['closed'] = True
+        if vm:
+            RESULT['closed'], RESULT['close_attempts'] = close_vm(vm)
+            if not RESULT['closed']:
+                RESULT['passed'] = False
     except Exception as error:
         RESULT.update(closed=False, close_error_type=type(error).__name__, passed=False)
     (OUT / 'plugin-result.json').write_text(json.dumps(RESULT, indent=2)+'\n')

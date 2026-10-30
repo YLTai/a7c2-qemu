@@ -10,6 +10,7 @@ root = Path.cwd()
 sys.path.insert(0, str(root / 'runtime/analysis'))
 from menu_control import VM
 from settings_instance import default_instance
+from guest_test_support import close_vm
 
 out = root / 'ci-firmware-evidence'
 out.mkdir(exist_ok=True)
@@ -143,8 +144,7 @@ except Exception as exc:
         }.items()}
 finally:
     try:
-        vm.close()
-        result['closed'] = True
+        result['closed'], result['close_attempts'] = close_vm(vm)
     except Exception as exc:
         result['closed'] = False
         result['close_error_type'] = type(exc).__name__

@@ -80,7 +80,7 @@ static int run(void) {
     if(which==7){puts("RAM_PLUGIN_OFF");return 0;}
     char name[128];snprintf(name,sizeof name,"/simulation/ram-plugin-%s",mode);
     /* Plugin bytes are untrusted; cpio may preserve the build user ownership. */
-    int input=open(name,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);struct stat st;
+    int input=open(name,O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);struct stat st;
     if(input<0 || plugin_fstat(input,&st) || !S_ISREG(st.st_mode) || (st.st_mode&022) || st.st_size<=0 || st.st_size>65536) {
       if(input>=0)close(input);
       puts("RAM_PLUGIN_REJECT missing/unsafe executable");return 1;

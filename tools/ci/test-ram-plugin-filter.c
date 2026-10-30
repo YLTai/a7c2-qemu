@@ -1,11 +1,23 @@
 /* Host logic test only. Actual guest seccomp enforcement is tested separately. */
+#define open captured_open
+#define unlink captured_unlink
 #define prctl captured_prctl
 #define _start boot_entry
 #include "../../runtime/analysis/ram-plugin-boot.c"
+#undef open
+#undef unlink
 #undef prctl
 #undef _start
 #include <assert.h>
 #include <stdarg.h>
+static char fifo_path[256];
+static int input_flags;
+int captured_open(const char *path,int flags,...) {
+    assert(!strcmp(path,"/simulation/ram-plugin-hello"));
+    input_flags=flags;
+    return (int)syscall(SYS_openat,AT_FDCWD,fifo_path,flags,0);
+}
+int captured_unlink(const char *path) { assert(!strcmp(path,RP_FRAME));return 0; }
 static struct sock_filter saved[64];
 static unsigned saved_count;
 int captured_prctl(int option, ...) {
@@ -48,5 +60,13 @@ int main(void) {
     struct rp_frame frame={.magic="A7OVL001",.width=RP_WIDTH,.height=RP_HEIGHT};
     assert(rp_valid(&frame));frame.reserved=1;assert(!rp_valid(&frame));
     frame.reserved=0;frame.mask[0]=1;assert(!rp_valid(&frame));
-    puts("HOST_FILTER_LOGIC_PASS; guest enforcement still requires real VM testing");
+    char directory[]="/tmp/ram-plugin-input-test-XXXXXX";
+    assert(mkdtemp(directory));
+    snprintf(fifo_path,sizeof fifo_path,"%s/fifo",directory);
+    assert(!mkfifo(fifo_path,0600));
+    assert(!setenv("RAM_PLUGIN_CASE","hello",1));
+    alarm(2);assert(run()==1);alarm(0);
+    assert(input_flags&O_NONBLOCK);
+    assert(!syscall(SYS_unlinkat,AT_FDCWD,fifo_path,0));assert(!rmdir(directory));
+    puts("HOST_FILTER_AND_FIFO_LOGIC_PASS; guest enforcement still requires real VM testing");
 }
