@@ -118,6 +118,9 @@ jobs:
             source/pci-hardware-build.json
             source/build-programs.sha256
             source/ci-build-receipt.json
+      - name: Verify full launcher without firmware
+        timeout-minutes: 2
+        run: python3 tools/ci/qemu-launcher-preflight.py
       - name: Install guest helper cross compiler
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         run: |
