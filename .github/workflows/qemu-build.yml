@@ -1,9 +1,11 @@
 name: QEMU build and firmware-free smoke
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/qemu-actions]
-    paths: [.github/workflows/qemu-build.yml, tools/ci/**]
+    inputs:
+      firmware:
+        description: Run real firmware import and headless smoke
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -116,6 +118,30 @@ jobs:
             source/pci-hardware-build.json
             source/build-programs.sha256
             source/ci-build-receipt.json
+      - name: Download private firmware input
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        env:
+          SONY_FIRMWARE_URL: ${{ secrets.SONY_FIRMWARE_URL }}
+        run: python3 tools/ci/download-firmware.py
+      - name: Verify and import pinned Sony firmware
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        run: |
+          set -o pipefail
+          bash start.sh --bodydata "$RUNNER_TEMP/sony-private-input/BODYDATA.DAT" --prepare-only 2>&1 | tee ci-logs/firmware-prepare.log
+      - name: Real headless firmware boot and screenshot
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        timeout-minutes: 20
+        run: python3 tools/ci/firmware-headless-smoke.py
+      - name: Upload only real screenshot and result
+        uses: actions/upload-artifact@v4
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.firmware
+        with:
+          name: firmware-boot-evidence
+          path: |
+            ci-firmware-evidence/result.json
+            ci-firmware-evidence/firmware-screen.png
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Upload only build verification logs
         uses: actions/upload-artifact@v4
         if: always()
