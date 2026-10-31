@@ -31,6 +31,11 @@ def inspect(path, data):
         m = re.match(r'^\s*([0-9a-f]+):\s+[0-9a-f]{8}\s+([\w.]+)\s*(.*)', line)
         if m:
             instructions.append((int(m[1], 16), m[2], m[3]))
+    relocations = {}
+    for line in base.run(['aarch64-linux-gnu-readelf', '-rW', str(path)]).splitlines():
+        fields = line.split()
+        if len(fields) >= 5 and fields[2] in ('R_AARCH64_GLOB_DAT', 'R_AARCH64_JUMP_SLOT'):
+            relocations[int(fields[0], 16)] = fields[4]
     dynamic = base.run(['aarch64-linux-gnu-readelf', '-dW', str(path)])
     needed = re.findall(r'\(NEEDED\).*\[([^\]]+)\]', dynamic)
     result = {'path': str(path.relative_to(base.ROOT)), 'sha256': hashlib.sha256(data).hexdigest(),
@@ -45,6 +50,14 @@ def inspect(path, data):
         facts = base.trace(instructions, s['va'], s['va'] + s['size'])
         if len(facts) > 1600:
             raise ValueError('function_fact_limit')
+        for fact in facts:
+            if fact['kind'] != 'indirect_call':
+                continue
+            match = re.fullmatch(r'load64\(offset\(constant:(\d+),(-?\d+)\)\)', fact['target_candidate'])
+            if match:
+                slot = int(match[1]) + int(match[2])
+                if slot in relocations:
+                    fact['linker_symbol_candidate'] = relocations[slot]
         result['selected_functions'].append(s | {'cfg_candidates_only': True, 'facts': facts})
     for address, operation, operands in instructions:
         if operation not in ('bl', 'b'):

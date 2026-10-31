@@ -62,6 +62,14 @@ class ProvenanceFixtures(unittest.TestCase):
         spec.loader.exec_module(module)
         return module.trace(lines, 0, max(row[0] for row in lines) + 4)
 
+    def test_indirect_call_tracks_page_relative_slot(self):
+        facts = self.trace([(0, 'adrp', 'x19, 1000 <page>'),
+                            (4, 'add', 'x19, x19, #0x20'),
+                            (8, 'ldr', 'x4, [x19, #8]'),
+                            (12, 'blr', 'x4'), (16, 'ret', '')])
+        call = next(f for f in facts if f['kind'] == 'indirect_call')
+        self.assertEqual(call['target_candidate'], 'load64(offset(constant:4128,8))')
+
     def test_masked_size_retains_source(self):
         facts = self.trace([(0, 'ldr', 'x23, [x0, #2080]'),
                             (4, 'and', 'x23, x23, #0xffffffff'),

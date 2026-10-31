@@ -5,6 +5,10 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <errno.h>
+#include <dirent.h>
+#include <limits.h>
+#include <linux/capability.h>
+#include <sys/syscall.h>
 #include <grp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -16,14 +20,33 @@
 #include <unistd.h>
 
 static int child(void) {
+    DIR *directory = opendir("/proc/self/fd");
+    if (!directory) return 19;
+    int own = dirfd(directory);
+    struct dirent *entry;
+    while ((entry = readdir(directory))) {
+        const char *p = entry->d_name;
+        unsigned fd = 0;
+        while (*p >= '0' && *p <= '9') {
+            unsigned digit = (unsigned)(*p - '0');
+            if (fd > ((unsigned)INT_MAX - digit) / 10) break;
+            fd = fd * 10 + digit; ++p;
+        }
+        if (*entry->d_name && !*p && fd != 1 && fd != (unsigned)own) close((int)fd);
+    }
+    closedir(directory);
     struct rlimit core = {0, 0}, files = {32, 32}, memory = {128UL<<20, 128UL<<20};
     if (setrlimit(RLIMIT_CORE, &core) || setrlimit(RLIMIT_NOFILE, &files) ||
         setrlimit(RLIMIT_AS, &memory)) return 20;
     for (int cap = 0; cap <= 63; ++cap)
         if (prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) && errno != EINVAL) return 21;
-    if (setgroups(0, NULL) || setgid(65534) || setuid(65534) ||
+    if (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534) ||
         prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return 22;
-    for (int fd = 0; fd < 4096; ++fd) if (fd != 1) close(fd);
+    struct __user_cap_header_struct header = {_LINUX_CAPABILITY_VERSION_3, 0};
+    struct __user_cap_data_struct caps[2] = {{0}, {0}};
+    if (syscall(SYS_capset, &header, caps) || syscall(SYS_capget, &header, caps) ||
+        caps[0].effective || caps[1].effective || caps[0].permitted || caps[1].permitted ||
+        caps[0].inheritable || caps[1].inheritable) return 23;
     printf("JIRITSU_PROBE restricted=1 uid=%u\n", (unsigned)getuid());
     fflush(stdout);
     void *handle = dlopen("/usr/lib/libJiritsu.so", RTLD_NOW | RTLD_LOCAL);

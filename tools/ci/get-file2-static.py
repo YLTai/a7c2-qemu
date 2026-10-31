@@ -64,7 +64,11 @@ def trace(lines, start, end):
         immediate = re.match(r'([wx]\d+|sp),\s*#(-?0x[0-9a-f]+|-?\d+)', operands)
         arithmetic = re.match(r'([wx]\d+|sp),\s*([wx]\d+|sp),\s*#(-?0x[0-9a-f]+|-?\d+)', operands)
         access = re.match(r'([wx]\d+),\s*\[(x\d+|sp)(?:,\s*#(-?0x[0-9a-f]+|-?\d+))?\]', operands)
-        if operation == 'mov' and pair:
+        if operation in ('adr', 'adrp'):
+            address_value = re.match(r'x\d+,\s*([0-9a-f]+)(?:\s|$)', operands)
+            if address_value:
+                value = 'constant:' + str(int(address_value[1], 16))
+        elif operation == 'mov' and pair:
             value = get(pair[2])
         elif operation in ('uxtw', 'sxtw') and pair:
             value = short(f'{operation}({get(pair[2])})')
@@ -75,7 +79,9 @@ def trace(lines, start, end):
             shift = re.search(r'lsl #?(\d+)', operands)
             if shift:
                 offset <<= int(shift[1])
-            value = short(f'offset({get(arithmetic[2])},{offset})')
+            origin = get(arithmetic[2])
+            value = ('constant:' + str(int(origin[9:]) + offset) if origin.startswith('constant:')
+                     else short(f'offset({origin},{offset})'))
         elif operation == 'and' and arithmetic:
             value = short(f'mask({get(arithmetic[2])},{int(arithmetic[3], 0)})')
         elif operation in ('lsl', 'lsr') and arithmetic:
@@ -120,6 +126,11 @@ def trace(lines, start, end):
                 facts.append({'at': address, 'kind': 'conditional', 'condition': operation,
                               'value_candidate': get(check[1]), 'bit': check[2],
                               'target': int(check[3], 16)})
+        elif operation == 'blr':
+            target_register = re.fullmatch(r'x\d+', operands)
+            facts.append({'at': address, 'kind': 'indirect_call',
+                          'target_candidate': get(operands) if target_register else 'unknown',
+                          'arguments_candidate': {f'x{i}': get(f'x{i}') for i in range(5)}})
         elif operation in ('bl', 'b'):
             target = re.match(r'([0-9a-f]+) <([^>]+)>', operands)
             if target:

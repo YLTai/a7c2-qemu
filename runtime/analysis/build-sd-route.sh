@@ -38,7 +38,7 @@ clang "${common[@]}" -Wl,--no-undefined,-e,_start,--dynamic-linker=/lib/ld-linux
 python3 - "$out" <<'PY'
 import hashlib,json,pathlib,subprocess,sys,re
 out=pathlib.Path(sys.argv[1]); records=[]
-for p in sorted(out.glob('sd-route-*')):
+for p in sorted([*out.glob('sd-route-*'), out/'jiritsu-load-probe']):
  if not p.is_file():continue
  data=p.read_bytes()
  ph=subprocess.check_output(['aarch64-linux-gnu-readelf','-lW',str(p)],text=True)
