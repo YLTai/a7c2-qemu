@@ -114,6 +114,7 @@ try:
         'completed':'JIRITSU_PROBE_RC=0' in probe,
         'dedicated_fixture_cleanup':'JIRITSU_FIXTURE_CLEAN=1' in probe,
         'original_handler_verified':verified,
+        'loader_undefined_symbols':re.findall(r'undefined symbol: ([A-Za-z_][A-Za-z_0-9]{0,159})',probe)[-8:],
         'own_constructor_receipt':handler.count('JIRITSU_RETURN=1')==1,
         'sony_usb_verified':False,'service_stubs':['mount','dmm_buffer','logs'],
         'dlclose_observer':'passes through to original libdl'}

@@ -51,6 +51,9 @@ static int child(int lazy) {
     if (syscall(SYS_capset, &header, caps) || syscall(SYS_capget, &header, caps) ||
         caps[0].effective || caps[1].effective || caps[0].permitted || caps[1].permitted ||
         caps[0].inheritable || caps[1].inheritable) return 23;
+    /* Fresh diagnostic alias of the bounded result pipe, not a service FD.
+     * Caller exports only fixed records/validated symbol identifiers. */
+    if (dup2(1, 2) != 2) return 24;
     printf("JIRITSU_PROBE restricted=1 uid=%u\n", (unsigned)getuid());
     fflush(stdout);
     void *handle = dlopen("/usr/lib/libJiritsu.so", (lazy ? RTLD_LAZY : RTLD_NOW) | RTLD_LOCAL);
