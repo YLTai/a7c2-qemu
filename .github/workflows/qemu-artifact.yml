@@ -1,0 +1,99 @@
+name: Build A7C II QEMU 11.1.2 artifact
+
+on:
+  push:
+    branches:
+      - ci/qemu-actions
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout this branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install QEMU build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential python3 ninja-build meson pkg-config \
+            bubblewrap apparmor patch flex bison git \
+            libgtk-3-dev libsdl2-dev libpixman-1-dev \
+            libglib2.0-dev libseccomp-dev \
+            ca-certificates util-linux xz-utils curl
+
+      # Ubuntu 24.04 restricts unprivileged user namespaces under AppArmor.
+      # build-qemu.sh intentionally uses bwrap, so use the same pinned Ubuntu
+      # distribution profile as the existing qemu-build.yml workflow.
+      - name: Enable reviewed bubblewrap AppArmor profile
+        run: |
+          set -euo pipefail
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
+          test "$(sysctl -n kernel.unprivileged_userns_clone)" = 1
+          test ! -e /etc/apparmor.d/bwrap-userns-restrict
+          test ! -s /etc/apparmor.d/local/bwrap-userns-restrict
+          test ! -s /etc/apparmor.d/local/unpriv_bwrap
+          review_dir="$(mktemp -d "$RUNNER_TEMP/bwrap-profile.XXXXXX")"
+          curl --fail --location --retry 3 \
+            'https://archive.ubuntu.com/ubuntu/pool/main/a/apparmor/apparmor-profiles_4.0.1really4.0.1-0ubuntu0.24.04.9_all.deb' \
+            -o "$review_dir/profile.deb"
+          echo "90b02aa006eea7702cd4e851343e469e41365dda42145a3cb035de1d6c773b8c  $review_dir/profile.deb" | sha256sum --check
+          dpkg-deb --extract "$review_dir/profile.deb" "$review_dir/extracted"
+          profile="$review_dir/extracted/usr/share/apparmor/extra-profiles/bwrap-userns-restrict"
+          echo "11d39094f044f0cda0febb3ad517b830301da6b2ce929664af09ee9e4dd264f9  $profile" | sha256sum --check
+          sudo install -m 0644 "$profile" /etc/apparmor.d/bwrap-userns-restrict
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+          bwrap --unshare-all --die-with-parent --ro-bind / / \
+            --dev /dev --proc /proc /bin/true
+
+      - name: Download and verify pinned QEMU 11.1.2 source
+        run: |
+          set -euo pipefail
+          mkdir -p source/vendor
+          curl --fail --location --retry 3 \
+            https://download.qemu.org/qemu-11.1.2.tar.xz \
+            -o source/vendor/qemu-11.1.2.tar.xz
+          echo '731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016  source/vendor/qemu-11.1.2.tar.xz' | sha256sum --check
+
+      - name: Build this repository's patched QEMU only
+        run: |
+          set -euo pipefail
+          bash build-qemu.sh
+
+      - name: Verify compiled binaries and checksums
+        run: |
+          set -euo pipefail
+          test -x runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
+          test -x runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
+          test -f runtime/sources/qemu-tools/usr/lib/libfdt.so.1
+          test -x runtime/sources/qemu-tools/usr/bin/dtc
+          test -f runtime/analysis/qemu-virt-board/virt-packed.dtb
+          sha256sum --check source/build-programs.sha256
+          runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64 --version | grep -F 'version 11.1.2'
+          runtime/sources/qemu-11.1.2/build-user/qemu-aarch64 --version | grep -F 'version 11.1.2'
+
+      - name: Upload compiled QEMU as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a7c2-qemu-11.1.2-linux-x86_64
+          path: |
+            runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
+            runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
+            runtime/sources/qemu-tools/usr/lib/libfdt.so.1
+            runtime/sources/qemu-tools/usr/bin/dtc
+            runtime/analysis/qemu-virt-board/virt-packed.dtb
+            source/build-programs.sha256
+            source/pci-hardware-build.json
+          if-no-files-found: error
+          retention-days: 30
