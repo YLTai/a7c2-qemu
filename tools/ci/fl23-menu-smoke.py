@@ -234,6 +234,10 @@ try:
     menu_frame('color-tone-group')
     for n,name in enumerate(('RIGHT','DOWN','RIGHT')):
         key(name);menu_frame('color-tone-'+str(n)+'-'+name.lower())
+    if last_image['firstboot_ui'].get('screen_id')!=217:
+        raise RuntimeError('creative_look_page_unverified')
+    for n in range(18):
+        key('DOWN');menu_frame('look-list-'+str(n+1).zfill(2))
     # A real current menu image is required before selecting any unreviewed row.
     # Subsequent iterations add the reviewed navigation and selection assertions.
     RESULT['menu_navigation_pending']=True
@@ -247,6 +251,7 @@ except Exception as error:
              'broker_receipt_mismatch','original_ap_fields_unverified','guest_broker_rejected',
              'guest_unhealthy','invalid_private_run_path','firstboot_incomplete','input_budget',
              'persistent_instance','guest_wait','close_incomplete','negative_rollback_unverified',
+             'creative_look_page_unverified',
              'negative_boot_failed_before_broker','negative_broker_wait'}
     RESULT['failure_reason']=str(error) if str(error) in allowed else 'unclassified'
     if vm:
