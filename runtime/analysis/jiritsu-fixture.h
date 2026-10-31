@@ -11,6 +11,7 @@ static size_t fixture_length;
 static unsigned fixture_mounts, fixture_allocs, fixture_logs, fixture_closes;
 static int fixture_close_result;
 static int fixture_enabled;
+static struct stat fixture_root;
 static struct { unsigned long reserved; void *bytes; } fixture_buffer;
 static struct { void *first; unsigned long reserved[3]; } fixture_dmm;
 unsigned fixture_unit(unsigned long length) __asm__("_ZN6DmmMgr13CheckUnitTypeEm");
@@ -57,6 +58,9 @@ static int fixture_prepare(void) {
         rmdir("/tmp/jiritsu"); return 54;
     }
     if (chown("/tmp/jiritsu", 65534, 65534)) {
+        umount("/tmp/jiritsu"); rmdir("/tmp/jiritsu"); return 55;
+    }
+    if (__lxstat(0, "/tmp/jiritsu", &fixture_root)) {
         umount("/tmp/jiritsu"); rmdir("/tmp/jiritsu"); return 55;
     }
     return 0;
@@ -106,6 +110,12 @@ static int fixture_handler(void *handle) {
 static int fixture_cleanup(void) {
     /* Remove only the tmpfs this process mounted, after its child is reaped.
      * No unlink of unknown names and no persistent filesystem write. */
-    if (umount("/tmp/jiritsu")) return 58;
-    return rmdir("/tmp/jiritsu") ? 59 : 0;
+    struct stat current;
+    struct statfs fs;
+    if (__lxstat(0, "/tmp/jiritsu", &current) || !S_ISDIR(current.st_mode) ||
+        current.st_dev != fixture_root.st_dev || current.st_ino != fixture_root.st_ino ||
+        current.st_uid != 65534 || statfs("/tmp/jiritsu", &fs) || fs.f_type != TMPFS_MAGIC) return 58;
+    if (umount("/tmp/jiritsu") || rmdir("/tmp/jiritsu")) return 59;
+    if (!__lxstat(0, "/tmp/jiritsu", &current) || errno != ENOENT) return 59;
+    printf("JIRITSU_FIXTURE_CLEAN=1\n"); fflush(stdout); return 0;
 }

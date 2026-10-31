@@ -108,10 +108,11 @@ try:
         'dlclose_calls=1 dlclose_result=0' in handler and
         'loaded=1 set_export=1 get_export=1 handlers_called=1' in handler and
         'child_exit=0 signal=0 reaped=1 sony_usb=0' in handler and
-        'JIRITSU_PROBE_RC=0' in probe)
+        'JIRITSU_PROBE_RC=0' in probe and 'JIRITSU_FIXTURE_CLEAN=1' in probe)
     result['jiritsu_loader_probe']={
         'records':re.findall(r'(?m)^JIRITSU_PROBE ([A-Za-z0-9_= -]+)\r?$',probe),
         'completed':'JIRITSU_PROBE_RC=0' in probe,
+        'dedicated_fixture_cleanup':'JIRITSU_FIXTURE_CLEAN=1' in probe,
         'original_handler_verified':verified,
         'own_constructor_receipt':handler.count('JIRITSU_RETURN=1')==1,
         'sony_usb_verified':False,'service_stubs':['mount','dmm_buffer','logs'],

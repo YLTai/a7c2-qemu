@@ -541,7 +541,7 @@ def run_live(proc, out, descriptor, display_capture=None, sd_export=None, networ
                 if mode=='fl23_status':
                     output=live_serial('/simulation/fl23-menu-readback; echo RAM_PLUGIN_RC=$?')
                 else:
-                    output=live_serial("test ! -e /tmp/sd-route/enable && test ! -e /tmp/ram-plugin.frame && ! grep -q ' /tmp/sd-route/card ' /proc/mounts && echo SD_ROUTE_CLEAN=1") if mode=='sd_clean' else live_serial('/simulation/sd-route-host; echo SD_ROUTE_RC=$?') if mode=='sd_suite' else live_serial('/simulation/jiritsu-load-probe; echo JIRITSU_PROBE_RC=$?') if mode=='jiritsu_load' else live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
+                    output=live_serial("test ! -e /tmp/sd-route/enable && test ! -e /tmp/jiritsu && test ! -L /tmp/jiritsu && test ! -e /tmp/ram-plugin.frame && ! grep -q ' /tmp/sd-route/card ' /proc/mounts && echo SD_ROUTE_CLEAN=1") if mode=='sd_clean' else live_serial('/simulation/sd-route-host; echo SD_ROUTE_RC=$?') if mode=='sd_suite' else live_serial('/simulation/jiritsu-load-probe; echo JIRITSU_PROBE_RC=$?') if mode=='jiritsu_load' else live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
                 result={'type':'ram_plugin','case':mode,'output':output.decode('utf-8','replace')[-8192:]}
             elif action == 'snapshot' and set(request) == {'action'}:
                 try:

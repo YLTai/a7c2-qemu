@@ -1,5 +1,6 @@
 /* QEMU-only dependency probe, not a USB payload or a Sony service broker.
- * A fresh, single-threaded child loads the original DSO. No handler is called.
+ * Fresh single-threaded children test binding, a helper, then SET_FILE2 with
+ * explicit synthetic service adapters. This is not USB/OSAL integration.
  * Parent exclusively reaps its child and enforces a wall deadline.
  */
 #define _GNU_SOURCE
@@ -96,6 +97,7 @@ static double now(void) {
     if (clock_gettime(CLOCK_MONOTONIC, &t)) return -1;
     return t.tv_sec + t.tv_nsec / 1e9;
 }
+static int child_may_be_live;
 static int one(int lazy) {
     printf("JIRITSU_PROBE binding=%s\n", lazy == 2 ? "handler" : lazy ? "lazy" : "now");
     fflush(stdout);
@@ -105,17 +107,20 @@ static int one(int lazy) {
     pid_t pid = fork();
     if (pid < 0) return 41;
     if (!pid) _exit(child(lazy));
+    child_may_be_live = 1;
     int status = 0;
     for (;;) {
         pid_t got = waitpid(pid, &status, WNOHANG);
-        if (got == pid) break;
+        if (got == pid) { child_may_be_live = 0; break; }
         if (got < 0 && errno != EINTR) return 42; /* No signal after ownership loss. */
         double current = now();
         if (current < 0 || current >= deadline) {
             kill(pid, SIGKILL);
             do { got = waitpid(pid, &status, 0); } while (got < 0 && errno == EINTR);
             printf("JIRITSU_PROBE timed_out=1 reaped=%d\n", got == pid);
-            fflush(stdout); return 43;
+            fflush(stdout);
+            if (got != pid) return 42;
+            child_may_be_live = 0; return 43;
         }
         usleep(10000);
     }
@@ -131,7 +136,12 @@ void _start(void) {
         rc = fixture_prepare();
         if (!rc) {
             rc = one(2);
-            if (rc != 42) { int cleanup = fixture_cleanup(); if (!rc) rc = cleanup; }
+            if (!child_may_be_live) {
+                int cleanup = fixture_cleanup(); if (!rc) rc = cleanup;
+            } else {
+                printf("JIRITSU_FIXTURE_CLEAN=0 child_state_unknown=1\n");
+                fflush(stdout); rc = 42;
+            }
         }
     }
     _exit(rc);
