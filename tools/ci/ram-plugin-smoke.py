@@ -72,17 +72,19 @@ def command(vm, case):
             elif case == 'off':
                 record['ok'] = 'RAM_PLUGIN_OFF' in text
             elif case == 'missing':
-                record['ok'] = 'RAM_PLUGIN_REJECT missing/unsafe bytecode' in text
+                record['ok'] = ('RAM_PLUGIN_REJECT missing/unsafe bytecode' in text
+                                and record.get('supervisor_exit') == 1)
             else:
                 match = re.search(r'RAM_PLUGIN_REJECT case='+case+r' signal=(\d+) exit=(-?\d+) timed_out=(\d) bytes=(\d+)', text)
                 if match:
                     sig, code, timeout, size = map(int, match.groups())
                     record.update(signal=sig, exit=code, timed_out=bool(timeout), output_bytes=size)
-                    record['ok'] = ((case == 'forbidden' and code == 41) or
+                    record['ok'] = (sig == 0 and timeout == 0 and size == 0
+                        and record.get('supervisor_exit') == 1 and ((case == 'forbidden' and code == 41) or
                         (case == 'timeout' and code == 43) or
                         (case == 'crash' and code == 42) or
                         (case == 'invalid_elf' and code == 41) or
-                        (case == 'malformed' and code == 41))
+                        (case == 'malformed' and code == 41)))
             RESULT['cases'].append(record)
             if not record.get('ok'):
                 raise RuntimeError('Guest confinement/result check failed')
@@ -131,7 +133,7 @@ try:
         PHASE = case
         print(json.dumps({'phase': 'plugin_case', 'case': case}), flush=True)
         command(vm, case)
-        # Verify every failed plugin leaves a working original display, then restore hello.
+        # Verify overlay removal and readdition, not full camera responsiveness.
         digest = screenshot(vm, case == 'hello', 'plugin-'+case+'.png')
         RESULT['cases'][-1]['screenshot_sha256'] = digest
     PHASE = 'restart'

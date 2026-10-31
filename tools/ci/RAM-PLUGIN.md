@@ -23,7 +23,9 @@ and ELF inputs are rejected. There are no plugin pointers, loads/stores to
 arbitrary addresses, syscalls, file/device/network operations, or native calls.
 The jump operation makes a real 4,096-step execution budget test possible.
 The input file is opened nonblocking without following symlinks, checked as a
-bounded regular file, and copied once into RAM. Only that snapshot is interpreted.
+bounded regular file, and copied once into RAM with an additional one-byte EOF
+check. Only that snapshot is interpreted. Concurrent writes after the snapshot
+are not interpreted; this does not promise a filesystem transaction.
 
 `ram-plugin-boot.c` is the trusted supervisor. Its child closes inherited file
 descriptors except the output pipe, enters an empty chroot, drops supplementary
@@ -52,7 +54,8 @@ CI case labels `crash` and `timeout` mean an explicit bytecode abort (exit 42)
 and instruction-budget exhaustion (exit 43), respectively; they are not native
 crash or wall-timeout tests. Invalid programs exit 41. Host sanitizer tests check
 fixtures, truncated/mutated inputs, valid prefixes with invalid tails, bounds,
-budget exhaustion, FIFO and symlink rejection. Guest tests require exact glyph
+budget exhaustion, FIFO and symlink rejection, and an append after the maximum
+input read. FIFO/symlink/append race tests are host-only. Guest tests require exact glyph
 and negative pixels from actual QMP screenshots, recovery after each bad input,
 normal save/close, and a new VM instance. Real guest results passed in
 [run 41175323027](https://github.com/YLTai/a7c2-qemu/actions/runs/41175323027)
@@ -75,6 +78,9 @@ QEMU's exact existing binary cache was restored and verified; QEMU was not
 recompiled. Native interpreter crashes, wall-watchdog firing, arbitrary kernel
 fault recovery and real hardware were not tested. The `crash`/`timeout` labels
 must not be read as claims about those untested cases.
+The display checks prove overlay removal and readdition, not full camera
+responsiveness. Guest interpreted rejection tests also require zero signal,
+no wall timeout, zero output bytes, and supervisor exit 1.
 
 Dispatch `qemu-build.yml` on `ci/qemu-actions` with `firmware=true`. The existing
 `SONY_FIRMWARE_URL` repository secret supplies the temporary input. QEMU's exact

@@ -1,14 +1,25 @@
 /* Host parser/fuel/FIFO tests; actual guest execution is checked separately. */
 #define open captured_open
 #define unlink captured_unlink
+#define read captured_read
 #define _start boot_entry
 #include "../../runtime/analysis/ram-plugin-boot.c"
 #undef open
 #undef unlink
+#undef read
 #undef _start
 #include <assert.h>
 static char fifo_path[256];
 static int input_flags;
+static int append_after_read;
+ssize_t captured_read(int fd,void *buffer,size_t size) {
+    ssize_t result=syscall(SYS_read,fd,buffer,size);
+    if(append_after_read && size==BC_MAX) {
+        int writer=(int)syscall(SYS_openat,AT_FDCWD,fifo_path,O_WRONLY|O_APPEND,0);
+        assert(writer>=0);assert(write(writer,"x",1)==1);close(writer);append_after_read=0;
+    }
+    return result;
+}
 int captured_open(const char *path,int flags,...) {
     assert(!strcmp(path,"/simulation/ram-plugin-hello"));input_flags=flags;
     return (int)syscall(SYS_openat,AT_FDCWD,fifo_path,flags,0);
@@ -44,6 +55,10 @@ int main(int argc,char **argv) {
     assert(!setenv("RAM_PLUGIN_CASE","hello",1));alarm(2);assert(run()==1);alarm(0);
     assert(input_flags&O_NONBLOCK);assert(!syscall(SYS_unlinkat,AT_FDCWD,fifo_path,0));
     assert(!symlink("nonexistent-target",fifo_path));assert(run()==1);
-    assert(input_flags&O_NOFOLLOW);assert(!syscall(SYS_unlinkat,AT_FDCWD,fifo_path,0));assert(!rmdir(directory));
+    assert(input_flags&O_NOFOLLOW);assert(!syscall(SYS_unlinkat,AT_FDCWD,fifo_path,0));
+    int writer=(int)syscall(SYS_openat,AT_FDCWD,fifo_path,O_WRONLY|O_CREAT|O_EXCL,0600);
+    assert(writer>=0);assert(write(writer,code,BC_MAX)==BC_MAX);close(writer);
+    append_after_read=1;assert(run()==2);assert(!append_after_read);
+    assert(!syscall(SYS_unlinkat,AT_FDCWD,fifo_path,0));assert(!rmdir(directory));
     puts("HOST_BYTECODE_TEST_PASS: fixtures, truncation, mutations, bounds, fuel, FIFO; not guest proof");
 }

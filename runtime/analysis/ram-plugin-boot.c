@@ -60,8 +60,9 @@ static int run(void) {
       if(input>=0)close(input);
       puts("RAM_PLUGIN_REJECT missing/unsafe bytecode");return 1;
     }
-    unsigned char bytes[BC_MAX];ssize_t got=read(input,bytes,sizeof bytes);close(input);
-    if(got!=st.st_size)return 2;
+    unsigned char bytes[BC_MAX],extra;ssize_t got=read(input,bytes,sizeof bytes);
+    ssize_t tail=read(input,&extra,1);close(input);
+    if(got!=st.st_size||tail!=0)return 2;
     const char *jail="/tmp/ram-plugin-root";
     if(mkdir(jail,0700) && errno!=EEXIST){return 2;}
     if(plugin_lstat(jail,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077)){return 2;}
