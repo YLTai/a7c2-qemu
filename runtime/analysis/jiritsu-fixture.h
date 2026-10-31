@@ -45,13 +45,35 @@ int dlclose(void *handle) {
     return rc;
 }
 static int fixture_prepare(void) {
-    int input = open("/simulation/jiritsu-return.so", O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
-    if (!sr_regular(input) || sr_hash(input, JIRITSU_RETURN_HASH)) { if(input>=0)close(input); return 50; }
-    if (lseek(input, 0, SEEK_SET) < 0) { close(input); return 51; }
-    ssize_t count = read(input, fixture_data + 3, sizeof(fixture_data) - 3);
+    int input = open("/simulation/jiritsu-return.so", O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
+    struct stat source, after;
+    if (input < 0 || __fxstat(0, input, &source) || !S_ISREG(source.st_mode) ||
+        source.st_uid != JIRITSU_RETURN_SOURCE_UID || source.st_gid != JIRITSU_RETURN_SOURCE_GID ||
+        source.st_nlink != 1 || (source.st_mode & 022) ||
+        source.st_size != JIRITSU_RETURN_SIZE || source.st_size <= 20 || source.st_size > 65536) {
+        if (input >= 0) close(input); return 50;
+    }
+    size_t offset = 0;
+    while (offset < JIRITSU_RETURN_SIZE) {
+        ssize_t got = read(input, fixture_data + 3 + offset, JIRITSU_RETURN_SIZE - offset);
+        if (got <= 0) { close(input); return 51; }
+        offset += (size_t)got;
+    }
     char extra;
-    if (count <= 0 || read(input, &extra, 1) != 0) { close(input); return 52; }
-    close(input); fixture_length = (size_t)count;
+    int changed = read(input, &extra, 1) != 0 || __fxstat(0, input, &after) ||
+        source.st_dev != after.st_dev || source.st_ino != after.st_ino ||
+        source.st_size != after.st_size || source.st_mode != after.st_mode ||
+        source.st_uid != after.st_uid || source.st_gid != after.st_gid;
+    close(input);
+    if (changed) return 51;
+    struct fl23_sha256 hash; unsigned char digest[32]; char hex[65];
+    fl23_sha_init(&hash); fl23_sha_update(&hash, fixture_data + 3, offset); fl23_sha_final(&hash, digest);
+    for (int i=0; i<32; ++i) snprintf(hex+2*i, 3, "%02x", digest[i]);
+    if (strcmp(hex, JIRITSU_RETURN_HASH)) return 52;
+    fixture_length = offset;
+    printf("JIRITSU_PROBE source_pin=1 uid=%u gid=%u bytes=%u\n",
+           (unsigned)source.st_uid, (unsigned)source.st_gid, (unsigned)offset);
+    fflush(stdout);
     /* Refuse an existing directory; never hide or delete unknown guest state. */
     if (mkdir("/tmp/jiritsu", 0700)) return 53;
     if (mount("tmpfs", "/tmp/jiritsu", "tmpfs", MS_NOSUID|MS_NODEV, "size=1m,mode=0700")) {
@@ -99,7 +121,7 @@ static int fixture_handler(void *handle) {
     fixture_enabled = 1;
     handler(packet, &fixture_dmm, &output_length);
     fixture_enabled = 0;
-    int fd = open("/tmp/jiritsu/libJit.so", O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    int fd = open("/tmp/jiritsu/libJit.so", O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     int matches = fixture_written_file(fd);
     if (fd >= 0) close(fd);
     printf("JIRITSU_PROBE original_set_handler=1 file_hash=%d mount_stubs=%u dmm_stubs=%u log_stubs=%u dlclose_calls=%u dlclose_result=%d\n",

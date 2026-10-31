@@ -51,7 +51,7 @@ static int child(int lazy) {
     if (syscall(SYS_capset, &header, caps) || syscall(SYS_capget, &header, caps) ||
         caps[0].effective || caps[1].effective || caps[0].permitted || caps[1].permitted ||
         caps[0].inheritable || caps[1].inheritable) return 23;
-    /* Fresh diagnostic alias of the bounded result pipe, not a service FD.
+    /* Fresh alias of the designated QEMU diagnostic output, not a service FD.
      * Caller exports only fixed records/validated symbol identifiers. */
     if (dup2(1, 2) != 2) return 24;
     printf("JIRITSU_PROBE restricted=1 uid=%u\n", (unsigned)getuid());
@@ -137,6 +137,7 @@ void _start(void) {
     if (!rc) rc = one(1);
     if (!rc) {
         rc = fixture_prepare();
+        printf("JIRITSU_PROBE fixture_prepare=%d\n", rc); fflush(stdout);
         if (!rc) {
             rc = one(2);
             if (!child_may_be_live) {

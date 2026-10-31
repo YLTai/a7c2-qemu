@@ -112,6 +112,7 @@ try:
     result['jiritsu_loader_probe']={
         'records':re.findall(r'(?m)^JIRITSU_PROBE ([A-Za-z0-9_= -]+)\r?$',probe),
         'completed':'JIRITSU_PROBE_RC=0' in probe,
+        'process_return_codes':[int(v) for v in re.findall(r'JIRITSU_PROBE_RC=(\d+)',probe)],
         'dedicated_fixture_cleanup':'JIRITSU_FIXTURE_CLEAN=1' in probe,
         'original_handler_verified':verified,
         'loader_undefined_symbols':re.findall(r'undefined symbol: ([A-Za-z_][A-Za-z_0-9]{0,159})',probe)[-8:],
