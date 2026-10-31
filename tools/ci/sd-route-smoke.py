@@ -97,6 +97,12 @@ def close():
 try:
     start();phase='baseline';result['original_hashes_before']=originals();result['ui_before']=ui('before')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('stale_request')
+    phase='original_library_probe';probe=command('jiritsu_load')
+    result['jiritsu_loader_probe']={
+        'records':re.findall(r'(?m)^JIRITSU_PROBE ([A-Za-z0-9_= -]+)\r?$',probe),
+        'completed':'JIRITSU_PROBE_RC=0' in probe,
+        'original_handlers_called':False,'sony_usb_verified':False}
+    if not result['jiritsu_loader_probe']['completed']:raise RuntimeError('original_probe_incomplete')
     phase='native_suite';text=command('sd_suite')
     result['mount_verified']=bool(re.search(r'SD_ROUTE_MOUNT fixture=tmpfs readonly=1 path=/tmp/sd-route/card',text))
     result['stale_session_rejected']='SD_ROUTE_STALE rejected=1' in text

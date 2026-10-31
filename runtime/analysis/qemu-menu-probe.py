@@ -878,6 +878,8 @@ for path in [Path(command[-1]), base / 'qemu-menu-probe.py', base / 'backup_prof
              *(path for path in sorted((base / 'menu-root/simulation').glob('sd-route-*')) if path.is_file()),
              *(path for path in sorted(base.glob('sd-route-*')) if path.suffix in ('.c','.h')),
              base / 'build-sd-route.sh',
+             base / 'jiritsu-load-probe.c',
+             base / 'menu-root/simulation/jiritsu-load-probe',
              base / 'ram-plugin.h',
              base / 'ram-plugin-boot.c',
              base / 'ram-bytecode.h', base / 'build-ram-bytecode.py',

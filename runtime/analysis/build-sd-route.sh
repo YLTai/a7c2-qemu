@@ -32,6 +32,8 @@ clang "${common[@]}" -shared -fPIC -Wl,-init,_init \
   "$src/sd-route-entry.c" "${libraries[@]}" -o "$out/sd-route-entry.so"
 clang "${common[@]}" -Wl,--no-undefined,-e,_start,--export-dynamic,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$src/sd-route-host.c" "${libraries[@]}" -o "$out/sd-route-host"
+clang "${common[@]}" -Wl,--no-undefined,-e,_start,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
+  "$src/jiritsu-load-probe.c" "${libraries[@]}" -o "$out/jiritsu-load-probe"
 # Own-binary ABI metadata only; no original firmware ELF content is exported.
 python3 - "$out" <<'PY'
 import hashlib,json,pathlib,subprocess,sys,re

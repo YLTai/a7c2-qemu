@@ -535,13 +535,13 @@ def run_live(proc, out, descriptor, display_capture=None, sd_export=None, networ
                 if input_session is not None:result['input_state']=input_session.status()
                 if late_passive is not None:result['post_shutter_observation']=late_passive
             elif (action == 'ram_plugin' and set(request) == {'action','case'}
-                  and request['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status','sd_suite','sd_clean')
+                  and request['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status','sd_suite','sd_clean','jiritsu_load')
                   and os.environ.get('A7C2_RAM_PLUGIN') == '1'):
                 mode=request['case']
                 if mode=='fl23_status':
                     output=live_serial('/simulation/fl23-menu-readback; echo RAM_PLUGIN_RC=$?')
                 else:
-                    output=live_serial("test ! -e /tmp/sd-route/enable && test ! -e /tmp/ram-plugin.frame && ! grep -q ' /tmp/sd-route/card ' /proc/mounts && echo SD_ROUTE_CLEAN=1") if mode=='sd_clean' else live_serial('/simulation/sd-route-host; echo SD_ROUTE_RC=$?') if mode=='sd_suite' else live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
+                    output=live_serial("test ! -e /tmp/sd-route/enable && test ! -e /tmp/ram-plugin.frame && ! grep -q ' /tmp/sd-route/card ' /proc/mounts && echo SD_ROUTE_CLEAN=1") if mode=='sd_clean' else live_serial('/simulation/sd-route-host; echo SD_ROUTE_RC=$?') if mode=='sd_suite' else live_serial('/simulation/jiritsu-load-probe; echo JIRITSU_PROBE_RC=$?') if mode=='jiritsu_load' else live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
                 result={'type':'ram_plugin','case':mode,'output':output.decode('utf-8','replace')[-8192:]}
             elif action == 'snapshot' and set(request) == {'action'}:
                 try:
