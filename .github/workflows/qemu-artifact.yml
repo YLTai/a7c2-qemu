@@ -83,17 +83,30 @@ jobs:
           runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64 --version | grep -F 'version 11.1.2'
           runtime/sources/qemu-11.1.2/build-user/qemu-aarch64 --version | grep -F 'version 11.1.2'
 
+      # GitHub artifact ZIPs do not preserve executable permissions.
+      # Wrap the binaries in tar.gz so they remain executable after extraction.
+      - name: Package compiled QEMU
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          archive=dist/a7c2-qemu-11.1.2-linux-x86_64.tar.gz
+          tar -czf "$archive" \
+            runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64 \
+            runtime/sources/qemu-11.1.2/build-user/qemu-aarch64 \
+            runtime/sources/qemu-tools/usr/lib/libfdt.so.1 \
+            runtime/sources/qemu-tools/usr/bin/dtc \
+            runtime/analysis/qemu-virt-board/virt-packed.dtb \
+            source/build-programs.sha256 \
+            source/pci-hardware-build.json
+          (cd dist && sha256sum "$(basename "$archive")" > SHA256SUMS)
+          tar -tzf "$archive"
+
       - name: Upload compiled QEMU as artifact
         uses: actions/upload-artifact@v4
         with:
           name: a7c2-qemu-11.1.2-linux-x86_64
           path: |
-            runtime/sources/qemu-11.1.2/build-sony-ui/qemu-system-aarch64
-            runtime/sources/qemu-11.1.2/build-user/qemu-aarch64
-            runtime/sources/qemu-tools/usr/lib/libfdt.so.1
-            runtime/sources/qemu-tools/usr/bin/dtc
-            runtime/analysis/qemu-virt-board/virt-packed.dtb
-            source/build-programs.sha256
-            source/pci-hardware-build.json
+            dist/a7c2-qemu-11.1.2-linux-x86_64.tar.gz
+            dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
