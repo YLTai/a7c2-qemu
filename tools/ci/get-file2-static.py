@@ -110,8 +110,12 @@ def trace(lines, start, end):
                 comparison = {'at': address, 'lhs_candidate': get(pair[1]),
                               'rhs_candidate': get(pair[2]), 'test': operation}
             elif immediate:
+                constant = int(immediate[2], 0)
+                shift = re.search(r'lsl #?(\d+)', operands)
+                if shift:
+                    constant <<= int(shift[1])
                 comparison = {'at': address, 'lhs_candidate': get(immediate[1]),
-                              'constant': int(immediate[2], 0), 'test': operation}
+                              'constant': constant, 'test': operation}
             else:
                 comparison = None
         if operation.startswith('b.'):

@@ -62,6 +62,12 @@ class ProvenanceFixtures(unittest.TestCase):
         spec.loader.exec_module(module)
         return module.trace(lines, 0, max(row[0] for row in lines) + 4)
 
+    def test_shifted_comparison_immediate(self):
+        facts = self.trace([(0, 'cmp', 'w0, #0x4, lsl #12'),
+                            (4, 'b.eq', '8'), (8, 'ret', '')])
+        branch = next(f for f in facts if f['kind']=='conditional')
+        self.assertEqual(branch['comparison']['constant'], 0x4000)
+
     def test_noreturn_does_not_poison_success_path(self):
         facts = self.trace([(0, 'mov', 'x21, x2'),
                             (4, 'cbz', 'x0, 14'),
