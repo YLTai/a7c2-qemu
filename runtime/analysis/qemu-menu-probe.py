@@ -1198,6 +1198,10 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                 if args.sony_timers:
                     setup += ["insmod /usr/kmod/utimer.ko"]
                 if args.seed_backup:
+                    if fl23_requested and args.load_dmm:
+                        # Populate before protecting Backup.bin; never attempt to
+                        # overwrite the protected mount with the later DMM copy.
+                        setup += ["cp -a /seed-setting/. /setting/ || exit 86"]
                     setup += ["cp /seed-backup.bin /setting/Backup.bin",
                               # Backup_save=1 lets the original driver commit a
                               # changed setting set back to /setting/Backup.bin;
@@ -1207,6 +1211,12 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                               "ls -l /dev/mem /dev/backup", "insmod /usr/kmod/stream.ko",
                               "insmod /usr/kmod/stream2.ko"]
                     if fl23_requested:
+                        # Backup_save is not a global write gate. Protect the
+                        # guest-only tmpfs file before loading the original
+                        # driver; native Backup operations may still use RAM.
+                        at=setup.index("cp /seed-backup.bin /setting/Backup.bin")+1
+                        setup[at:at]=["mount -o bind /setting/Backup.bin /setting/Backup.bin && "
+                            "mount -o remount,bind,ro /setting/Backup.bin || exit 86"]
                         # Replace the module-load line with a strict fixed command;
                         # the root-only receipt is created only after a fresh load.
                         line="insmod /usr/kmod/backup.ko Backup_load=1 Backup_save=0"
@@ -1215,8 +1225,8 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                         setup += ["export MENU_FL23_MENU=1" if fl23_menu else "export MENU_FL23_AUDIT=1"]
                         if fl23_negative:setup += ["export MENU_FL23_TEST_ROLLBACK=1"]
                 if args.load_dmm:
-                    setup += ["cp -a /seed-setting/. /setting/",
-                              "insmod /usr/kmod/osal_ulogio.ko ulogio_initfile=/setting/ulogio.bin",
+                    if not fl23_requested:setup += ["cp -a /seed-setting/. /setting/"]
+                    setup += ["insmod /usr/kmod/osal_ulogio.ko ulogio_initfile=/setting/ulogio.bin",
                               "insmod /usr/kmod/dmm.ko DmmConfig=/setting/DmmCfg.bin",
                               "insmod /usr/kmod/grm_ma.ko"]
                 # input/ioexp/udate and peers import Backup_*; icdt also follows DMM in initrc.

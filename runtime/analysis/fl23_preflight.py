@@ -178,6 +178,11 @@ def model_mapping_audit(data):
 def inspect_original(data):
     # Identity check precedes ELF inspection; no user-selectable digest bypass.
     audit = audit_original(data)
+    model = model_mapping_audit(data)
+    if (not model.get('unique_mapping') or not model.get('file_backed') or
+            not model.get('nonexec_data') or model.get('elf_flags') != 6 or
+            model.get('file_offset') != 0x5bb35b0):
+        raise Rejected('model_mapping')
     return _require_data_pages(audit)
 
 

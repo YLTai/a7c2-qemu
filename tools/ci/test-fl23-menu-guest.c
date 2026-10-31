@@ -3,7 +3,7 @@
 #include <assert.h>
 
 static int receipt_bad,map_bad,protect_calls,protect_fail,backup_calls,backup_fail,rollback_bad;
-static int ready,rollback,backup_reads,relro,originals,live_matches,map_calls,map_changed;
+static int ready,rollback,backup_reads,relro,originals,live_matches,map_calls,map_changed,model_reads;
 static unsigned char backup[2];
 int fl23_test_receipt(void){return receipt_bad;}
 int fl23_test_mapping(struct guest_state *s){
@@ -38,12 +38,15 @@ static void logger(const char *name,const char *text){
     if(!strcmp(name,"FL23_MENU_ROLLBACK "))rollback++;
     if(!strcmp(name,"FL23_MENU_ORIGINAL "))originals++;
     if(!strcmp(name,"FL23_MENU_LIVE ")&&strstr(text,"ap_fields_match=1"))live_matches++;
+    if(!strcmp(name,"FL23_MENU_MODEL "))model_reads++;
 }
 static uintptr_t base;
 static void reset(void){
     entered=0;receipt_bad=map_bad=protect_calls=protect_fail=backup_calls=backup_fail=rollback_bad=0;
     ready=rollback=backup_reads=relro=0;backup[0]=backup[1]=0;
     originals=live_matches=map_calls=map_changed=0;live_base=0;live_log=NULL;live_sampled=live_ready=0;
+    model_last=UINT32_MAX;model_events=0;
+    model_reads=0;*(unsigned *)(base+0x5bc35b0)=0;
     for(unsigned i=0;i<7;i++)memset((void *)(base+offsets[i]),0,4);
     unsetenv("MENU_FL23_TEST_ROLLBACK");
 }
@@ -91,11 +94,15 @@ static void mapping_tests(void){
 }
 int main(void){
     mapping_tests();
-    void *memory=mmap(NULL,0x599a000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    void *memory=mmap(NULL,0x5bc4000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     assert(memory!=MAP_FAILED);base=(uintptr_t)memory;
     assert(!setenv("MENU_FL23_MENU","1",1));
     reset();assert(!run());assert(ready==1&&protect_calls==8&&backup[0]==10&&backup[1]==11);
     fl23_menu_guest_observe();fl23_menu_guest_observe();assert(live_matches==1);
+    assert(model_reads==1);
+    *(unsigned *)(base+0x5bc35b0)=16;fl23_menu_guest_observe();assert(model_reads==2);
+    *(unsigned *)(base+0x5bc35b0)=17;fl23_menu_guest_observe();assert(model_reads==3);
+    *(unsigned *)(base+0x5bc35b0)=26;fl23_menu_guest_observe();assert(model_reads==3);
     assert(run()==1&&ready==1);
     reset();relro=1;assert(!run()&&ready==1&&protect_calls==8);
     reset();relro=1;map_changed=1;assert(run()==13&&!ready);
@@ -118,7 +125,7 @@ int main(void){
     reset();unsetenv("MENU_FL23_MENU");setenv("MENU_FL23_AUDIT","1",1);
     assert(!run()&&originals==1&&!protect_calls&&!backup_calls);original();
     fl23_menu_guest_observe();assert(live_matches==1);
-    assert(!munmap(memory,0x599a000));
+    assert(!munmap(memory,0x5bc4000));
     puts("FL23 guest broker host fault-injection passed; no W+X request");
     return 0;
 }

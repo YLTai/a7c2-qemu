@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/statvfs.h>
+#include <sys/vfs.h>
 #include "fl23-menu-transaction.h"
 #ifdef __aarch64__
 /* Match original glibc 2.25, not the build sysroot's newer stat/C23 aliases. */
@@ -34,11 +36,18 @@ static uintptr_t live_base;
 static int live_enabled;
 static unsigned live_sampled;
 static unsigned live_ready;
+static unsigned model_last=UINT32_MAX,model_events;
 static void (*live_log)(const char *,const char *);
 
 void fl23_menu_guest_observe(void) {
-    if(!__atomic_load_n(&live_ready,__ATOMIC_ACQUIRE) ||
-       __atomic_exchange_n(&live_sampled,1,__ATOMIC_ACQ_REL))return;
+    if(!__atomic_load_n(&live_ready,__ATOMIC_ACQUIRE))return;
+    unsigned index=__atomic_load_n((unsigned *)(live_base+0x5bc35b0),__ATOMIC_RELAXED);
+    if(index<=25 && __atomic_exchange_n(&model_last,index,__ATOMIC_RELAXED)!=index &&
+       __atomic_fetch_add(&model_events,1,__ATOMIC_RELAXED)<64) {
+        char text[64];snprintf(text,sizeof text,"index=%u after_original_frame=1",index);
+        live_log("FL23_MENU_MODEL ",text);
+    }
+    if(__atomic_exchange_n(&live_sampled,1,__ATOMIC_ACQ_REL))return;
     const unsigned char zero[4]={0};int matches=1;
     for(unsigned i=0;i<7;i++)
         if(memcmp((void *)(live_base+offsets[i]),live_enabled?fl23_values[i]:zero,fl23_sizes[i]))matches=0;
@@ -72,6 +81,11 @@ static int volatile_receipt(void) {
     int bad=guest_fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_uid ||
         (st.st_mode&022) || st.st_size!=2 || read(fd,text,3)!=2 || memcmp(text,"0\n",2);
     if(close(fd))bad=1;
+    /* Backup_save=0 is not a global write gate. Require the actual fixed file
+     * to reside on a read-only tmpfs bind mount before any native writes. */
+    struct statfs fs;struct statvfs vfs;
+    if(statfs("/setting/Backup.bin",&fs) || fs.f_type!=0x01021994 ||
+       statvfs("/setting/Backup.bin",&vfs) || !(vfs.f_flag&ST_RDONLY))bad=1;
     return bad?-1:0;
 #endif
 }
@@ -122,6 +136,32 @@ static int mapping_check(struct guest_state *s) {
     return bad;
 #endif
 }
+static int model_mapping_check(uintptr_t base) {
+#ifdef FL23_HOST_TEST
+    (void)base;return 0;
+#else
+    struct stat st;int fd=open("/usr/lib/appFw.so",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
+    if(fd<0)return -1;
+    int bad=guest_fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return -1;
+    FILE *f=fopen("/proc/self/maps","r");if(!f)return -1;
+    char line[1024],mode[5],path[512];unsigned found=0;
+    unsigned long a=base+0x5bc35b0;
+    while(fgets(line,sizeof line,f)) {
+        unsigned long lo,hi,off,inode;unsigned major,minor;
+        if(!strchr(line,'\n')){bad=1;break;}
+        if(guest_scan(line,"%lx-%lx %4s %lx %x:%x %lu %511s",&lo,&hi,mode,&off,&major,&minor,&inode,path)!=8)continue;
+        if(lo>a || hi<a+4)continue;
+        unsigned long device=st.st_dev;
+        if(++found!=1 || (strcmp(mode,"r--p")&&strcmp(mode,"rw-p")) ||
+           strcmp(path,"/usr/lib/appFw.so") || inode!=(unsigned long)st.st_ino ||
+           major!=(((device>>8)&0xfff)|((device>>32)&~0xfffUL)) ||
+           minor!=((device&0xff)|((device>>12)&~0xffUL)) || off+a-lo!=0x5bb35b0)bad=1;
+    }
+    if(ferror(f))bad=1;
+    if(fclose(f))bad=1;
+    return bad||found!=1?-1:0;
+#endif
+}
 static int protect(struct guest_state *s,int restore) {
     int failed=0;
     /* Never grant WRITE+EXEC, even transiently. Fixed data pages only. */
@@ -156,13 +196,14 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
        (!enabled && strcmp(getenv("MENU_FL23_AUDIT"),"1")) ||
        __atomic_exchange_n(&entered,1,__ATOMIC_ACQ_REL))return 1;
     log("FL23_MENU_BEGIN ","scope=private_guest_RAM application_init_started=0");
-    if(!base || (base&4095) || base>UINTPTR_MAX-0x599a000 || sysconf(_SC_PAGESIZE)!=4096 ||
+    if(!base || (base&4095) || base>UINTPTR_MAX-0x5bc4000 || sysconf(_SC_PAGESIZE)!=4096 ||
        volatile_receipt())return 2;
     struct guest_state s={.base=base};
     int mapped=mapping_check(&s);
     char detail[120];snprintf(detail,sizeof detail,"result=%d permissions=%d,%d,%d,%d",mapped,s.prot[0],s.prot[1],s.prot[2],s.prot[3]);
     log("FL23_MENU_MAP ",detail);
     if(mapped)return 3;
+    if(model_mapping_check(base))return 14;
     log("FL23_MENU_STAGE ","lookup");
     backup_read_fn rd=(backup_read_fn)lookup(handle,"Backup_nread");
     backup_write_fn wr=(backup_write_fn)lookup(handle,"Backup_write");

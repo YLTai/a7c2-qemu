@@ -216,6 +216,8 @@ except Exception as error:
                                  if stage in ('lookup','backup_read','backup_originals','ap_failed','ap_applied','joint_failed','joint_applied')]
         RESULT['broker_ready']='FL23_MENU_READY' in text
         RESULT['ap_after_first_frame']='FL23_MENU_LIVE ap_fields_match=1' in text
+        RESULT['native_model_indices']=[int(n) for n in re.findall(
+            r'FL23_MENU_MODEL index=(\d+) after_original_frame=1',text)]
         if last_image:RESULT['last_native_screen']=last_image['firstboot_ui']
         if not fatal and vm.status()['state']=='running' and last_image is None:
             try:capture('failure')

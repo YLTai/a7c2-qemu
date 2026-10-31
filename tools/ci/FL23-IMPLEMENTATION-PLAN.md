@@ -230,3 +230,27 @@ two fixed paths internally, with its SHA-256 implementation tested against
 Python hashlib across empty input, padding boundaries and streaming blocks.
 Neither the earlier transaction receipt nor first-frame AP checks
 prove the live Creative Look model was initialized with the new choices.
+
+## Correction: Backup_save is not a global gate
+
+Run `41196397614` at `a20c61d` proves a disabled fresh VM retains seven AP
+originals and native bindings 0/0, but its tmpfs `/setting/Backup.bin` hashes to
+`29b5c7d43721ba2117371aa61b48741730c9730a1ce3d20703c9425bf0be81f6`,
+while immutable seed and appFw retain their pinned hashes. This is not a FL23
+write: no plugin transaction ran. Existing `report/config-persistence-frontier.md`
+already establishes that Backup_save=0 does not gate every native save path.
+The earlier inference from that parameter alone is withdrawn.
+
+The launcher now protects the fixed guest tmpfs Backup file using a read-only
+bind mount before loading the original driver. The broker checks actual tmpfs
+type and ST_RDONLY before any mutation, in addition to both persistence flags
+and a fresh module-load receipt. DMM inputs are populated before protection.
+Failure to mount or validate aborts this disposable guest; no host sandbox or
+original firmware file is changed. Guest compatibility remains to be tested.
+
+The same preflight run confirms the current Look model at relative VA 0x5bc35b0
+is uniquely file-backed RW non-executable data at file offset 0x5bb35b0. The
+trusted observer now reads only that scalar after original frames, validates
+its complete live mapping/file identity, bounds values to 0..25 and logs at
+most 64 changes. It exposes no read-address request and never writes the model.
+Native selection still requires reviewed menu screenshots and original input.
