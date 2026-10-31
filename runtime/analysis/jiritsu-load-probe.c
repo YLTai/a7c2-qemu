@@ -37,8 +37,10 @@ static int child(int lazy) {
     }
     closedir(directory);
     struct rlimit core = {0, 0}, files = {32, 32}, memory = {128UL<<20, 128UL<<20};
+    struct rlimit processes = {1, 1}, cpu = {5, 5}, writes = {65536, 65536};
     if (setrlimit(RLIMIT_CORE, &core) || setrlimit(RLIMIT_NOFILE, &files) ||
-        setrlimit(RLIMIT_AS, &memory)) return 20;
+        setrlimit(RLIMIT_AS, &memory) || setrlimit(RLIMIT_NPROC, &processes) ||
+        setrlimit(RLIMIT_CPU, &cpu) || setrlimit(RLIMIT_FSIZE, &writes)) return 20;
     for (int cap = 0; cap <= 63; ++cap)
         if (prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) && errno != EINVAL) return 21;
     if (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534) ||

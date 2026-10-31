@@ -60,6 +60,6 @@ def follow(instructions, start, selector, read_integer):
         elif op == 'br':
             return {'selector': selector, 'branch_at': pc, 'target': get(args)}
         else:
-            raise ValueError('unsupported_operation')
+            raise ValueError('unsupported_operation:' + op)
         pc = next_pc
     raise ValueError('instruction_bound')

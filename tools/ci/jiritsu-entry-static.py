@@ -73,7 +73,7 @@ def inspect(path, data):
                         break
                 result['callback_switch'].append(edge)
             except (KeyError, ValueError) as error:
-                result['callback_switch'].append({'selector': selector, 'unresolved': type(error).__name__})
+                result['callback_switch'].append({'selector': selector, 'unresolved': str(error) if re.fullmatch(r'[a-z0-9_:.-]{1,60}', str(error)) else type(error).__name__})
     for name, s in symbols.items():
         if s['undefined'] or not SELECT.search(name):
             continue
@@ -102,7 +102,10 @@ def inspect(path, data):
         if path.name == 'im.elf' and re.match(r'(waitpid|signal|fork)@', target[2]):
             # A bounded local window, explicitly not a recovered function/CFG.
             # Constants can narrow review; unknown origins remain unknown.
-            window = base.trace(instructions, address - 80, address + 4)
+            starts = [a + 4 for a, op, _ in instructions if address - 80 <= a < address
+                      and (op in ('ret', 'b', 'br', 'cbz', 'cbnz', 'tbz', 'tbnz') or op.startswith('b.'))]
+            start = max(starts, default=address - 80)
+            window = base.trace(instructions, start, address + 4)
             result.setdefault('im_process_windows', []).append({
                 'call_at': address, 'function_boundary_known': False,
                 'facts': window})
