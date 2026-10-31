@@ -170,6 +170,8 @@ static int prepare(const char *name) {
     return 0;
 }
 static int one(const char *name) {
+    active_ticks=0;ownership_lost=other_reaped=signal_attempts=detached=0;
+    eject_live=steal_child=0;fixture="normal";
     int disabled=!strcmp(name,"disabled");
     if(prepare(name)){printf("SD_ROUTE_FAILURE stage=prepare errno=%d case=%s\n",errno,name);return -1;}
     if(!disabled){int fd=open(SR_ROOT "/enable",O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600);if(fd<0)return -1;int ok=write(fd,"1",1)==1;close(fd);if(!ok)return -1;}
