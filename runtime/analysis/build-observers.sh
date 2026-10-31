@@ -28,6 +28,8 @@ clang --target=aarch64-linux-gnu -O2 -fPIC -mno-outline-atomics \
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include \
   -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$source_dir/fl23-menu-readback.c" "$analysis_dir/menu-root/usr/lib/libbackup.so" \
+  -Wl,--no-as-needed "$analysis_dir/menu-root/usr/lib/libosal_uipc.so" \
+  "$analysis_dir/menu-root/usr/lib/libosal_utm.so" \
   -Wl,--allow-shlib-undefined "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/fl23-menu-readback"
 common+=("-ffile-prefix-map=$device_build=.")
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include \
