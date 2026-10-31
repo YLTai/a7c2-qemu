@@ -47,7 +47,36 @@ static void original(void){
     for(unsigned i=0;i<7;i++)assert(!memcmp((void *)(base+offsets[i]),(char[4]){0},fl23_sizes[i]));
     assert(!backup[0]&&!backup[1]&&!ready);
 }
+static void mapping_tests(void){
+    struct guest_state s={.base=0x100000000UL};unsigned seen[4]={0};char line[256];
+    for(unsigned i=0;i<4;i++){
+        snprintf(line,sizeof line,"%lx-%lx %s %lx 00:01 17 /usr/lib/appFw.so\n",
+                 (unsigned long)(s.base+pages[i]),(unsigned long)(s.base+pages[i]+4096),
+                 i==3?"rw-p":"r-xp",(unsigned long)(pages[i]-(i==3?0x10000:0)));
+        assert(!mapping_line(&s,line,17,seen));assert(seen[i]==1);
+        assert(mapping_line(&s,line,17,seen)); /* duplicate mappings */
+        seen[i]=1;
+    }
+    const char *bad_modes[]={"rwxp","rw-s","r--p","---p"};
+    for(unsigned i=0;i<4;i++){
+        memset(seen,0,sizeof seen);
+        snprintf(line,sizeof line,"%lx-%lx %s %lx 00:01 17 /usr/lib/appFw.so\n",
+                 (unsigned long)(s.base+pages[0]),(unsigned long)(s.base+pages[0]+4096),
+                 bad_modes[i],(unsigned long)pages[0]);
+        assert(mapping_line(&s,line,17,seen));
+    }
+    for(unsigned i=0;i<4;i++){
+        memset(seen,0,sizeof seen);
+        snprintf(line,sizeof line,"%lx-%lx r-xp %lx 00:01 %u %s\n",
+                 (unsigned long)(s.base+pages[0]+(i==0)),
+                 (unsigned long)(s.base+pages[0]+4096),
+                 (unsigned long)(pages[0]+(i==1?4096:0)),i==2?18:17,
+                 i==3?"/usr/lib/other.so":"/usr/lib/appFw.so");
+        assert(mapping_line(&s,line,17,seen));
+    }
+}
 int main(void){
+    mapping_tests();
     void *memory=mmap(NULL,0x599a000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     assert(memory!=MAP_FAILED);base=(uintptr_t)memory;
     assert(!setenv("MENU_FL23_MENU","1",1));

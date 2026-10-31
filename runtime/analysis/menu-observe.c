@@ -6094,7 +6094,7 @@ static void install_create_screen_sentinel(unsigned long base) {
 }
 static void *observe_application_init(void *argument) {
     record("ENTER ", "Application_System_Init");
-    if(getenv("MENU_FL23_MENU")) {
+    if(getenv("MENU_FL23_MENU") && !getenv("MENU_OBSERVE_SELFTEST")) {
         int rc=fl23_menu_guest_initialize(appfw_base,fl23_application_handle,real_dlsym,record);
         if(rc) {
             char text[80];snprintf(text,sizeof text,"code=%d application_init_called=0",rc);

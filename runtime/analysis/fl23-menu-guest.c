@@ -60,6 +60,24 @@ static int volatile_receipt(void) {
     return bad?-1:0;
 #endif
 }
+static int mapping_line(struct guest_state *s,const char *line,unsigned long expected_inode,unsigned seen[4]) {
+    char path[512],mode[5];unsigned long start,end,fileoff,inode;unsigned major,minor;
+    if(guest_scan(line,"%lx-%lx %4s %lx %x:%x %lu %511s",
+                  &start,&end,mode,&fileoff,&major,&minor,&inode,path)!=8)return 0;
+    int bad=0;
+    for(unsigned i=0;i<4;i++) {
+        uintptr_t page=s->base+pages[i];
+        if(start>=page+4096 || end<=page)continue;
+        uintptr_t disk=pages[i]-(i==3?0x10000:0);
+        int expected=i==3?(PROT_READ|PROT_WRITE):(PROT_READ|PROT_EXEC);
+        int prot=(mode[0]=='r'?PROT_READ:0)|(mode[1]=='w'?PROT_WRITE:0)|(mode[2]=='x'?PROT_EXEC:0);
+        if(start>page || end<page+4096 || strcmp(path,"/usr/lib/appFw.so") ||
+           mode[3]!='p' || inode!=expected_inode || prot!=expected ||
+           page-start+fileoff!=disk || ++seen[i]!=1)bad=1;
+        s->prot[i]=prot;
+    }
+    return bad;
+}
 static int mapping_check(struct guest_state *s) {
 #ifdef FL23_HOST_TEST
     return fl23_test_mapping(s);
@@ -68,23 +86,10 @@ static int mapping_check(struct guest_state *s) {
     if(fd<0)return -1;
     int bad=guest_fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return -1;
     FILE *f=fopen("/proc/self/maps","r");if(!f)return -1;
-    char line[1024],path[512],mode[5];unsigned seen[4]={0};
+    char line[1024];unsigned seen[4]={0};
     while(fgets(line,sizeof line,f)) {
-        unsigned long start,end,fileoff,inode;unsigned major,minor;
         if(!strchr(line,'\n')){bad=1;break;}
-        if(guest_scan(line,"%lx-%lx %4s %lx %x:%x %lu %511s",
-                  &start,&end,mode,&fileoff,&major,&minor,&inode,path)!=8)continue;
-        for(unsigned i=0;i<4;i++) {
-            uintptr_t page=s->base+pages[i];
-            if(start>=page+4096 || end<=page)continue;
-            uintptr_t disk=pages[i]-(i==3?0x10000:0);
-            int expected=i==3?(PROT_READ|PROT_WRITE):(PROT_READ|PROT_EXEC);
-            int prot=(mode[0]=='r'?PROT_READ:0)|(mode[1]=='w'?PROT_WRITE:0)|(mode[2]=='x'?PROT_EXEC:0);
-            if(start>page || end<page+4096 || strcmp(path,"/usr/lib/appFw.so") ||
-               mode[3]!='p' || inode!=(unsigned long)st.st_ino || prot!=expected ||
-               page-start+fileoff!=disk || ++seen[i]!=1)bad=1;
-            s->prot[i]=prot;
-        }
+        if(mapping_line(s,line,(unsigned long)st.st_ino,seen))bad=1;
     }
     if(ferror(f))bad=1;
     if(fclose(f))bad=1;
