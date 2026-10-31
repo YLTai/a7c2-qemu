@@ -211,3 +211,22 @@ probe deliberately remains unsuccessful until reviewed native navigation and
 selection/readback assertions are added. Diagnostic-only CI iterations may use
 `fl23_only=true`; final validation must use the default false and include all
 existing regressions.
+
+## Observed guest checkpoint (82753d4)
+
+Run `41195359797` confirms actual private mappings RX/RX/RX/R, a successful
+joint AP/Backup transaction, exact permission restoration, and all seven AP
+fields still matching after the first original frame. The actual screenshot is
+the original language setup page; this is not Creative Look visibility evidence.
+The run closed normally on its first attempt. Its independent fixed binding
+helper returned 127 before any binding/hash output, so selection, persistent-file
+hashes, native forced rollback, and disabled restart are not yet verified.
+
+Commit `93d5ca8` links that helper with the same original OSAL dependencies as
+existing Backup helpers. Run `41195691450` tests this correction; its result is
+failed on the second readback stage: native bindings were exactly 10/11 but
+original BusyBox has no sha256sum applet. The fixed helper now hashes only the
+two fixed paths internally, with its SHA-256 implementation tested against
+Python hashlib across empty input, padding boundaries and streaming blocks.
+Neither the earlier transaction receipt nor first-frame AP checks
+prove the live Creative Look model was initialized with the new choices.

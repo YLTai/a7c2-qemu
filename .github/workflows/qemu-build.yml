@@ -128,6 +128,7 @@ jobs:
       - name: Verify FL23 preflight and transaction failures without firmware
         run: |
           python3 -m unittest discover -s runtime/analysis -p test_fl23_preflight.py -v
+          python3 -m unittest discover -s runtime/analysis -p test_fl23_sha256.py -v
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-transaction.c -o "$RUNNER_TEMP/fl23-transaction-test"
           "$RUNNER_TEMP/fl23-transaction-test"
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-guest.c -o "$RUNNER_TEMP/fl23-guest-test"
