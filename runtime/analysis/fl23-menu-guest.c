@@ -15,6 +15,9 @@
 #include <sys/statvfs.h>
 #include <sys/vfs.h>
 #include "fl23-menu-transaction.h"
+#ifndef FL23_HOST_TEST
+#include "fl23-sha256.h"
+#endif
 #ifdef __aarch64__
 /* Match original glibc 2.25, not the build sysroot's newer stat/C23 aliases. */
 extern int __fxstat(int,int,struct stat *);
@@ -56,6 +59,7 @@ void fl23_menu_guest_observe(void) {
 }
 #ifdef FL23_HOST_TEST
 extern int fl23_test_receipt(void);
+extern int fl23_test_file_hash(void);
 extern int fl23_test_mapping(struct guest_state *);
 extern int fl23_test_mprotect(void *,size_t,int);
 #define mprotect fl23_test_mprotect
@@ -87,6 +91,25 @@ static int volatile_receipt(void) {
     if(statfs("/setting/Backup.bin",&fs) || fs.f_type!=0x01021994 ||
        statvfs("/setting/Backup.bin",&vfs) || !(vfs.f_flag&ST_RDONLY))bad=1;
     return bad?-1:0;
+#endif
+}
+static int backup_file_original(void) {
+#ifdef FL23_HOST_TEST
+    return fl23_test_file_hash();
+#else
+    static const unsigned char expected[32]={
+        0x3d,0xab,0x4f,0x0d,0x6b,0x77,0x90,0xf4,0xa7,0x79,0x80,0x34,0xb5,0x7f,0x43,0xbf,
+        0xe3,0x25,0x5c,0x39,0xdc,0x6d,0xa2,0x89,0x7f,0xc2,0x88,0xb3,0xa2,0x18,0xfe,0x47};
+    FILE *f=fopen("/setting/Backup.bin","rb");if(!f)return -1;
+    struct fl23_sha256 s;fl23_sha_init(&s);unsigned char bytes[4096],digest[32];size_t n;int bad=0;
+    while((n=fread(bytes,1,sizeof bytes,f))) {
+        if(s.bytes+n>2390264){bad=1;break;}
+        fl23_sha_update(&s,bytes,n);
+    }
+    if(ferror(f)||s.bytes!=2390264)bad=1;
+    if(fclose(f))bad=1;
+    fl23_sha_final(&s,digest);
+    return bad||memcmp(digest,expected,32)?-1:0;
 #endif
 }
 static int mapping_line(struct guest_state *s,const char *line,unsigned long expected_inode,
@@ -198,6 +221,8 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     log("FL23_MENU_BEGIN ","scope=private_guest_RAM application_init_started=0");
     if(!base || (base&4095) || base>UINTPTR_MAX-0x5bc4000 || sysconf(_SC_PAGESIZE)!=4096 ||
        volatile_receipt())return 2;
+    if(backup_file_original())return 15;
+    log("FL23_MENU_STORAGE ","before_transaction original_hash=1 readonly_tmpfs=1");
     struct guest_state s={.base=base};
     int mapped=mapping_check(&s);
     char detail[120];snprintf(detail,sizeof detail,"result=%d permissions=%d,%d,%d,%d",mapped,s.prot[0],s.prot[1],s.prot[2],s.prot[3]);
@@ -239,6 +264,7 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     log("FL23_MENU_STAGE ",rc?"joint_failed":"joint_applied");
     if(rc) {
         int bk=backup_restore(rd,wr,old),data=restore_data(&s),permissions=protect(&s,1);
+        if(backup_file_original())bk=1;
         log("FL23_MENU_ROLLBACK ",bk||data||permissions?"complete=0":"complete=1");
         return bk||data||permissions?10:11;
     }
@@ -253,6 +279,8 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     }
     struct guest_state restored={.base=base};
     if(mapping_check(&restored) || memcmp(restored.prot,s.prot,sizeof s.prot))return 13;
+    if(backup_file_original())return 16;
+    log("FL23_MENU_STORAGE ","after_transaction original_hash=1 readonly_tmpfs=1");
     live_base=base;live_enabled=1;live_log=log;
     __atomic_store_n(&live_ready,1,__ATOMIC_RELEASE);
     /* No claim about menu/model/CP: those need native UI evidence. */

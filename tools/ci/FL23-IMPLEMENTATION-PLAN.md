@@ -254,3 +254,17 @@ trusted observer now reads only that scalar after original frames, validates
 its complete live mapping/file identity, bounds values to 0..25 and logs at
 most 64 changes. It exposes no read-address request and never writes the model.
 Native selection still requires reviewed menu screenshots and original input.
+
+Run `41196866130` at `68bb493` proves the read-only guest file protection is
+compatible with original startup: disabled baseline, enabled startup and fresh
+disabled restart all preserve original appFw/seed/Backup hashes, AP fields and
+native bindings match their expected states. Forced native rollback completes
+and aborts before Application_System_Init; all four VMs close on the first try.
+Original input traverses language/date/setup pages, reaches shooting, then opens
+the actual MENU Main grid (screenshot artifact `13041450686`). Overall CI remains
+unsuccessful because Creative Look navigation/selection has not yet been tested.
+
+Subsequent diagnostic-only runs reuse this known baseline and focus on menu
+navigation; the full default run retains baseline, rollback, restart and Hello
+World regression. The broker also adds same-VM Backup SHA checks immediately
+before/after the transaction, and during rollback; mismatch is fail-closed.

@@ -5,6 +5,8 @@
 static int receipt_bad,map_bad,protect_calls,protect_fail,backup_calls,backup_fail,rollback_bad;
 static int ready,rollback,backup_reads,relro,originals,live_matches,map_calls,map_changed,model_reads;
 static unsigned char backup[2];
+static unsigned file_hash_calls,file_hash_fail;
+int fl23_test_file_hash(void){return ++file_hash_calls==file_hash_fail?-1:0;}
 int fl23_test_receipt(void){return receipt_bad;}
 int fl23_test_mapping(struct guest_state *s){
     for(unsigned i=0;i<4;i++)s->prot[i]=i==3?PROT_READ|PROT_WRITE:PROT_READ|PROT_EXEC;
@@ -47,6 +49,7 @@ static void reset(void){
     originals=live_matches=map_calls=map_changed=0;live_base=0;live_log=NULL;live_sampled=live_ready=0;
     model_last=UINT32_MAX;model_events=0;
     model_reads=0;*(unsigned *)(base+0x5bc35b0)=0;
+    file_hash_calls=file_hash_fail=0;
     for(unsigned i=0;i<7;i++)memset((void *)(base+offsets[i]),0,4);
     unsetenv("MENU_FL23_TEST_ROLLBACK");
 }
@@ -107,6 +110,8 @@ int main(void){
     reset();relro=1;assert(!run()&&ready==1&&protect_calls==8);
     reset();relro=1;map_changed=1;assert(run()==13&&!ready);
     reset();receipt_bad=1;assert(run()==2&&!backup_calls&&!protect_calls);original();
+    reset();file_hash_fail=1;assert(run()==15&&!backup_calls&&!protect_calls);original();
+    reset();file_hash_fail=2;assert(run()==16&&!ready);
     reset();map_bad=1;assert(run()==3&&!backup_calls&&!protect_calls);original();
     reset();backup[1]=1;assert(run()==5&&!backup_calls&&!protect_calls);
     reset();*(unsigned char *)(base+offsets[6])=1;assert(run()==6&&!backup_calls&&!protect_calls);

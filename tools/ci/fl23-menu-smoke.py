@@ -22,6 +22,8 @@ OUT=ROOT/'ci-firmware-evidence';OUT.mkdir(exist_ok=True)
 os.environ.update(A7C2_RAM_PLUGIN='1',MENU_BACKUP_SAVE='0',A7C2_SETTINGS_PERSIST='0')
 RESULT={'passed':False,'scope':'FL23 original menu only; CP/ISP color not verified',
         'menu_verified':False,'selection_verified':False,'color_verified':False,'cases':[]}
+DISCOVERY=os.environ.get('A7C2_FL23_DISCOVERY')=='1'
+RESULT['navigation_discovery_only']=DISCOVERY
 vm=None
 PHASE='start'
 last_image=None
@@ -52,7 +54,8 @@ def wait(predicate,timeout=40):
         state=vm.status()
         if state['mock'] or state['state'] in ('error','faulted','exited','disconnected'):
             raise RuntimeError('guest_unhealthy')
-        if 'FL23_MENU_FATAL' in console():raise RuntimeError('guest_broker_rejected')
+        if 'FL23_MENU_FATAL' in console() or 'FL23_GUARD_FATAL' in console():
+            raise RuntimeError('guest_broker_rejected')
         if predicate(state):return state
         time.sleep(.2)
     raise TimeoutError('guest_wait')
@@ -104,6 +107,13 @@ def key(name,mouse=False):
     wait(lambda _:bool(edges()))
     inputs.append({'key':name,'submitted':True,'native_edges':edges()})
 
+def menu_frame(label):
+    capture(label)
+    (OUT/('fl23-'+label+'.png')).write_bytes((OUT/'fl23-latest.png').read_bytes())
+    RESULT.setdefault('menu_frames',[]).append({'label':label,
+        'pixel_sha256':last_image['pixel_sha256'],'screen':last_image['firstboot_ui'],
+        'model_indices':[int(n) for n in re.findall(r'FL23_MENU_MODEL index=(\d+) after_original_frame=1',console())]})
+
 def start(enabled):
     global vm
     os.environ['A7C2_FL23_MENU']='1' if enabled else '0'
@@ -131,12 +141,17 @@ def start(enabled):
             raise RuntimeError('guest_original_file_changed')
     ready='FL23_MENU_READY ap_fields=7 backup_bindings=2 permissions_restored=1' in console()
     if ready!=enabled:raise RuntimeError('broker_receipt_mismatch')
+    storage=console()
+    if ('FL23_MENU_STORAGE before_transaction original_hash=1 readonly_tmpfs=1' not in storage or
+        (enabled and 'FL23_MENU_STORAGE after_transaction original_hash=1 readonly_tmpfs=1' not in storage)):
+        raise RuntimeError('guest_original_file_changed')
     live_receipt='FL23_MENU_LIVE ap_fields_match=1 enabled='+str(int(enabled))+' after_original_frame=1'
     wait(lambda _:live_receipt in console())
     if not enabled and 'FL23_MENU_ORIGINAL ap_fields=7 backup_bindings=2 read_only=1' not in console():
         raise RuntimeError('original_ap_fields_unverified')
     RESULT['cases'].append({'enabled':enabled,'bindings_readback':True,'broker_ready':ready,
                             'appfw_and_backup_file_hashes':True,'ap_fields_verified_after_first_frame':True,
+                            'backup_same_vm_before_after':enabled,
                             'ap_originals_verified':not enabled})
 
 def close():
@@ -174,7 +189,8 @@ def negative_rollback():
         os.environ.pop('A7C2_FL23_NEGATIVE',None)
 
 try:
-    PHASE='disabled_baseline';start(False);close()
+    if not DISCOVERY:
+        PHASE='disabled_baseline';start(False);close()
     PHASE='enabled_boot';start(True)
     initial=capture('language')
     PHASE='language_navigation'
@@ -190,12 +206,17 @@ try:
     PHASE='menu_navigation'
     key('MENU');capture('menu')
     (OUT/'fl23-menu-open.png').write_bytes((OUT/'fl23-latest.png').read_bytes())
+    # Reviewed run 41196866130: Main tab, first main-grid item selected.
+    # Arrow-only exploration changes focus/categories without confirming rows.
+    for n,name in enumerate(('LEFT','LEFT','DOWN','DOWN','RIGHT')):
+        key(name);menu_frame('category-'+str(n)+'-'+name.lower())
     # A real current menu image is required before selecting any unreviewed row.
     # Subsequent iterations add the reviewed navigation and selection assertions.
     RESULT['menu_navigation_pending']=True
-    PHASE='negative_rollback';close();negative_rollback()
-    PHASE='disabled_restart';start(False);close()
-    RESULT['fresh_vm_bindings_restored']=True
+    if not DISCOVERY:
+        PHASE='negative_rollback';close();negative_rollback()
+        PHASE='disabled_restart';start(False);close()
+        RESULT['fresh_vm_bindings_restored']=True
 except Exception as error:
     RESULT.update(failed_phase=PHASE,error_type=type(error).__name__)
     allowed={'plugin_request_failed','binding_readback_mismatch','guest_original_file_changed',
@@ -208,6 +229,8 @@ except Exception as error:
         text=console()
         fatal=re.findall(r'FL23_MENU_FATAL code=(\d+)',text)
         RESULT['broker_error_codes']=[int(code) for code in fatal]
+        RESULT['storage_mount_ready']='FL23_GUARD storage_mount_ready=1' in text
+        RESULT['storage_mount_error_codes']=[int(n) for n in re.findall(r'FL23_GUARD_FATAL code=(\d+)',text)]
         RESULT['broker_maps']=[list(map(int,values)) for values in re.findall(
             r'FL23_MENU_MAP result=(\d+) permissions=(\d+),(\d+),(\d+),(\d+)',text)]
         RESULT['rollback_complete']='FL23_MENU_ROLLBACK complete=1' in text

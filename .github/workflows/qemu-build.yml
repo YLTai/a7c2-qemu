@@ -180,6 +180,7 @@ jobs:
         timeout-minutes: 35
         env:
           A7C2_SPARSE_RAM: '1'
+          A7C2_FL23_DISCOVERY: ${{ inputs.fl23_only && '1' || '0' }}
         run: python3 tools/ci/fl23-menu-smoke.py
       - name: Upload only real screenshot and result
         uses: actions/upload-artifact@v4
