@@ -65,6 +65,16 @@ explicit abort, budget exhaustion, unknown opcode, repeated recovery, and new-VM
 restart all passed. One normal controller cleanup attempt failed after SD export;
 the second normal close attempt succeeded, then a fresh VM started successfully.
 Final close succeeded on its first attempt. No forced-close bypass was added.
+The underlying cleanup exception was not retained in the public fixed-schema
+result, so its exact cause is unknown; this is a controller cleanup reliability
+observation, not evidence of a bytecode interpreter failure.
+
+The EOF and stricter zero-output assertions passed in the follow-up
+[run 41176305947](https://github.com/YLTai/a7c2-qemu/actions/runs/41176305947)
+at commit `383bb1e45f5fd9076414796929be67572edf2d42`. All same-instance
+hello/reject/clear/hello sequences and new-VM restart passed again. Both normal
+closes succeeded on their first attempt in that run, and all screenshot hashes
+matched the earlier results. The exact QEMU binary cache was verified again.
 
 The actual Hello World PNG has SHA-256
 `7b7c5ad7ef3fec58f7cb2c36a43aa66bb36010d1a19065403a8c00b9bb3ad7a9`.
