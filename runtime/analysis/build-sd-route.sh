@@ -46,5 +46,5 @@ for p in sorted(out.glob('sd-route-*')):
   'interpreter':re.findall(r'Requesting program interpreter: ([^\]]+)',ph),
   'needed':re.findall(r'\(NEEDED\).*?\[([^\]]+)\]',dynamic),
   'versions':sorted(set(re.findall(r'GLIBC_[0-9.]+',versions)))})
-pathlib.Path('ci-logs/sd-route-build.json').write_text(json.dumps({'schema':'sd-route-build/1','sony_usb_abi_verified':False,'files':records},indent=2)+'\n')
+(out.resolve().parents[3]/'ci-logs/sd-route-build.json').write_text(json.dumps({'schema':'sd-route-build/1','sony_usb_abi_verified':False,'files':records},indent=2)+'\n')
 PY
