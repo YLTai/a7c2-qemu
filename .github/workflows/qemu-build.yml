@@ -134,11 +134,13 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-guest.c -o "$RUNNER_TEMP/fl23-guest-test"
           "$RUNNER_TEMP/fl23-guest-test"
       - name: Install guest helper cross compiler
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
         run: |
           sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
           aarch64-linux-gnu-gcc --version
           aarch64-linux-gnu-ld --version
+      - name: Verify offline no-op library and uncertain execution handling
+        timeout-minutes: 3
+        run: bash tools/ci/usb-noop-smoke.sh
       - name: Download private firmware input
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         env:
@@ -204,6 +206,7 @@ jobs:
           path: |
             ci-logs/*.log
             ci-logs/build-identity.json
+            ci-logs/usb-noop-result.json
             source/ci-build-receipt.json
             source/build-programs.sha256
           retention-days: 7
