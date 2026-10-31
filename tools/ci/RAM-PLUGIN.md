@@ -186,8 +186,27 @@ file hashes, native forced rollback, fresh disabled originals and normal cleanup
 Original key input completed firstboot and opened MENU with the overlay off.
 [Run 41197921239](https://github.com/YLTai/a7c2-qemu/actions/runs/41197921239)
 also verified same-VM before/after Backup hashes and reached Exposure/Color.
-Creative Look visibility, selection and parameter readback are still under test;
-these discovery runs deliberately remain unsuccessful until those checks exist.
+[Run 41201197793](https://github.com/YLTai/a7c2-qemu/actions/runs/41201197793)
+shows independent FL2/FL3 entries, each selected with OK, reflected in the parent
+menu and retained after reopening. FL3 contrast was changed 0 -> +1, confirmed,
+read back after reopening, then restored and read back as 0. Original file hashes
+and native bindings remained unchanged after those UI operations. The acceptance
+test now checks reviewed original screen IDs and exact control crops for these
+results. Full [run 41201840284](https://github.com/YLTai/a7c2-qemu/actions/runs/41201840284)
+passed at `2e8b7494926e56dba4672b2d08f30e90f3a208e3`: original firmware startup,
+Hello World/negative/recovery tests, FL23 menu and parameter assertions, native
+forced rollback and fresh disabled originals. All four FL23 VM closes succeeded
+on their first attempt. Exact QEMU source and binary caches were restored and
+verified. Artifact `firmware-boot-evidence` (`13043257647`) contains the original
+screenshots and fixed-schema results; `fl23-result.json` reports passed=true,
+selection_verified=true, parameter_readback_verified=true, color_verified=false.
+
+Selection readback here means the original menu value and reopened native
+parameter page. A separate current-Look getter is not verified; product index 16
+is never used as selection evidence. The six custom-Look slots' initial cached
+bindings are not part of this acceptance; the tested choices are the independent
+FL2/FL3 entries. Initial parameter order is contrast, highlights, shadows, fade,
+saturation, sharpness, sharpness range and clarity (0/0/0/0/0/4/3/1 for both).
 Use `fl23_only=true` only for navigation diagnostics; final validation must leave
 it false to include Hello World and all baseline/recovery/restart tests.
 

@@ -280,3 +280,36 @@ read only as product identity, not FL2/FL3 acceptance. Code now names this
 PRODUCT, samples it once, and explicitly excludes it from selection evidence.
 Original menu confirmation/readback remains necessary. No passing selection
 result was produced using the misidentified field.
+
+## Native menu evidence and final acceptance
+
+Run `41201197793` at `ef33795` completed the UI sequence: native P-mode input,
+independent FL2/FL3 labels, OK confirmation, parent-menu FL2/FL3 value, reentry
+with the corresponding Look, and FL3 contrast 0 -> +1 -> 0 with confirm/reopen
+readback. Source appFw, source seed and protected tmpfs Backup retained their
+pinned hashes after the operations. Its discovery result stayed unsuccessful
+until the resulting screenshots were reviewed and assertions added.
+
+Commit `2e8b749` checks exact reviewed native screen IDs and control-crop hashes
+for both selections and all parameter readbacks. A local acceptance run against
+those actual screenshots passes; replacing the confirmation's native screen ID
+with an error screen is rejected. Full run `41201840284` includes all original
+Hello World/negative/recovery checks plus disabled baseline, enable/UI sequence,
+forced native rollback and fresh disabled audit; it completed successfully. All four FL23 VM closes succeeded on their first
+attempt; original firmware startup and Hello World/negative/recovery checks
+also passed. QEMU source and binary exact caches were hit and verified.
+Artifact `13043257647` contains only approved PNG evidence and JSON results.
+
+The verified readback source is original GUI state after OK and reopening, not
+an independent current-Look getter. The camera product-model scalar is excluded.
+Initial custom-slot cache refresh and CP/ISP color processing remain unverified.
+The direct preset entries, not custom-slot labels, are used for acceptance.
+
+Final tested implementation: `2e8b7494926e56dba4672b2d08f30e90f3a208e3`,
+full run https://github.com/YLTai/a7c2-qemu/actions/runs/41201840284.
+`fl23-result.json`: passed=true, navigation_discovery_only=false, menu_verified=true,
+selection_verified=true, parameter_readback_verified=true, native_rollback_verified=true,
+fresh_vm_bindings_restored=true, files_and_bindings_unchanged_after_ui=true,
+color_verified=false, separate_current_look_getter_verified=false.
+No permission or environment blockers remain for this menu/parameter scope.
+Final-photo color remains outside the implemented/verified CP/ISP capability.
