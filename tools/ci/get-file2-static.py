@@ -76,6 +76,13 @@ def trace(lines, start, end):
             if shift:
                 offset <<= int(shift[1])
             value = short(f'offset({get(arithmetic[2])},{offset})')
+        elif operation == 'and' and arithmetic:
+            value = short(f'mask({get(arithmetic[2])},{int(arithmetic[3], 0)})')
+        elif operation in ('lsl', 'lsr') and arithmetic:
+            amount = int(arithmetic[3], 0)
+            width = 32 if arithmetic[1].startswith('w') else 64
+            if 0 <= amount < width:
+                value = short(f'{operation}{width}({get(arithmetic[2])},{amount})')
         elif operation in ('ldrb', 'ldrh', 'ldr', 'ldrsw') and access:
             offset = int(access[3] or '0', 0)
             location = short(f'offset({get(access[2])},{offset})')

@@ -14,14 +14,14 @@ spec = importlib.util.spec_from_file_location('get_file2_static', Path(__file__)
 base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
 PROCESS = re.compile(r'(^|_)(fork|vfork|clone|exec\w*|posix_spawn\w*|wait\w*|signal|sigaction|pthread_\w*|dlopen|dlclose|dlsym)(@|$)|osal_.*(thread|task|msg_queue)', re.I)
-SELECT = re.compile(r'^(jiritsu_init|adj_cmd_set_file2|cmd_high_capacity_send_file|cmd_high_capacity_get_file|cmd_file_delete2|sys_file_remove2|ramdisk_mount)$|CImJiritsu.*(init|jit_thread|request)|MakeOsalMessage|Serialize|ReadDeviceData')
+SELECT = re.compile(r'^(jiritsu_init|adj_cmd_set_file2|cmd_high_capacity_send_file|cmd_high_capacity_get_file|cmd_file_delete2|sys_file_remove2|ramdisk_mount)$|CImJiritsu.*(init|jit_thread|req|release)|CShellExecute|MakeOsalMessage|Serialize|ReadDeviceData')
 
 
 def inspect(path, data):
     symbols = {}
     for line in base.run(['aarch64-linux-gnu-readelf', '-Ws', str(path)]).splitlines():
         parts = line.split()
-        if len(parts) < 8 or parts[3] != 'FUNC':
+        if len(parts) < 8 or parts[3] not in ('FUNC', 'NOTYPE'):
             continue
         name = parts[7]
         symbols[name] = {'name': name, 'va': int(parts[1], 16),
@@ -63,7 +63,7 @@ def main():
     manifest = json.loads((base.ROOT / 'sony-assets.json').read_text())
     report = {'schema': 'jiritsu-entry-static/1', 'firmware_executed': False,
               'usb_access': False, 'camera_upload_enabled': False, 'files': []}
-    for name in ('libJiritsu.so', 'libsencore.so', 'libosal.so'):
+    for name in ('libJiritsu.so', 'libsencore.so', 'libosal_uipc.so', 'libosal_utm.so'):
         relative = 'menu-root/usr/lib/' + name
         if relative not in manifest:
             report['files'].append({'path': relative, 'status': 'not_in_manifest'})

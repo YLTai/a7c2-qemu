@@ -62,6 +62,15 @@ class ProvenanceFixtures(unittest.TestCase):
         spec.loader.exec_module(module)
         return module.trace(lines, 0, max(row[0] for row in lines) + 4)
 
+    def test_masked_size_retains_source(self):
+        facts = self.trace([(0, 'ldr', 'x23, [x0, #2080]'),
+                            (4, 'and', 'x23, x23, #0xffffffff'),
+                            (8, 'mov', 'x2, x23'),
+                            (12, 'bl', '100 <read>'), (16, 'ret', '')])
+        call = next(f for f in facts if f['kind'] == 'call')
+        self.assertEqual(call['arguments_candidate']['x2'],
+                         'mask(load64(offset(argument0,2080)),4294967295)')
+
     def test_early_return_does_not_poison_other_branch(self):
         facts = self.trace([(0, "mov", "x19, x0"), (4, "cbz", "w1, 10"),
                             (8, "ldp", "x19, x20, [sp], #32"), (12, "ret", ""),
