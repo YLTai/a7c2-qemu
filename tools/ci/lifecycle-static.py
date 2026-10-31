@@ -17,7 +17,8 @@ import subprocess
 ROOT = Path('runtime/analysis')
 NEEDLES = ('/tmp/jiritsu', 'libJit.so', 'SET_FILE2', '/proc/mounts',
            '/proc/self/mountinfo', '/proc/mountinfo', '/sys/power/image_mode',
-           '/sys/power/image_drop', '/sys/power/image_dev')
+           '/sys/power/image_drop', '/sys/power/image_dev', '/tmp_wbshd',
+           'image_mode', 'image_drop', '*wbi4')
 INTEREST = re.compile(r'file|jit|init|dlopen|dlclose|mount|unshare|setns|chroot|readlink|realpath', re.I)
 
 
@@ -52,6 +53,8 @@ def script_facts(data, fstab=False):
             tokens = shlex.split(text, comments=True)
         except ValueError:
             tokens = []
+        if tokens and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', tokens[0]):
+            row['command_identifier'] = tokens[0]
         row['integer_tokens'] = [int(t) for t in tokens if re.fullmatch(r'[0-9]{1,6}', t)][:8]
         row['test_operators'] = [t for t in tokens if t in ('-e', '-d', '-f', '-eq', '-ne', '=', '!=')]
         if tokens and Path(tokens[0]).name in ('mount', 'mkdir', 'ln', 'exec', 'source', '.'):
@@ -159,19 +162,51 @@ def elf_facts(path, data):
     functions = []
     current = None
     registers = {}
+    origins = {}
+    comparison = None
     target_addresses = {va: n['id'] for n in needles for va in n['virtual_addresses']}
     for line in listing.splitlines():
         label = re.match(r'^([0-9a-f]+) <([^>]+)>:', line)
         if label:
             current = {'name': label[2], 'va': int(label[1], 16), 'calls': [],
-                       'zero_tests': [], 'string_candidates': []}
+                       'zero_tests': [], 'selector_tests': [], 'string_candidates': []}
             functions.append(current)
             registers = {}
+            origins = {'x' + str(n): 'entry_arg' + str(n) for n in range(8)}
+            comparison = None
             continue
-        ins = re.match(r'^\s*([0-9a-f]+):\s+[0-9a-f]{8}\s+(\w+)\s*(.*)', line)
+        ins = re.match(r'^\s*([0-9a-f]+):\s+[0-9a-f]{8}\s+([\w.]+)\s*(.*)', line)
         if not ins or current is None:
             continue
         address, op, operands = int(ins[1], 16), ins[2], ins[3]
+        # Narrow input-selector trace, not a general decompiler. Only emit
+        # comparisons and byte-load provenance in the selected handlers.
+        trace = (current['name'].startswith(('adj_cmd_set_file2@@', 'adj_cmd_get_file2@@',
+                 'get_access_filename@@', 'adj_cmd_set_file_path@@', 'jiritsu_init@@')))
+        register_copy = re.match(r'([xw]\d+),\s*([xw]\d+)\b', operands) if op == 'mov' else None
+        byte_load = re.match(r'(w\d+),\s*\[(x\d+)(?:,\s*#(0x[0-9a-f]+|\d+))?\]', operands) if op == 'ldrb' else None
+        compare = re.match(r'([xw]\d+),\s*#(0x[0-9a-f]+|\d+)', operands) if op == 'cmp' else None
+        if register_copy:
+            target, source = 'x' + register_copy[1][1:], 'x' + register_copy[2][1:]
+            origins[target] = origins.get(source, 'unknown')
+        elif byte_load:
+            origins['x' + byte_load[1][1:]] = 'byte(' + origins.get(byte_load[2], 'unknown') + '+' + str(int(byte_load[3] or '0', 0)) + ')'
+        elif op not in ('str', 'strb', 'strh', 'stp', 'cmp', 'tst', 'cbz', 'cbnz', 'tbz', 'tbnz'):
+            destination = re.match(r'([xw]\d+)\b', operands)
+            if destination:
+                origins.pop('x' + destination[1][1:], None)
+        if op in ('adds', 'subs', 'ands', 'tst', 'cmn'):
+            comparison = None
+        if compare:
+            comparison = {'at': address, 'register': compare[1],
+                          'origin_candidate': origins.get('x' + compare[1][1:], 'unknown'),
+                          'constant': int(compare[2], 0)}
+        if trace and op.startswith('b.') and comparison:
+            target = re.match(r'([0-9a-f]+)', operands)
+            if target:
+                current['selector_tests'].append(comparison | {
+                    'branch_at': address, 'condition': op[2:], 'target': int(target[1], 16)})
+            comparison = None
         if op in ('bl', 'b'):
             target = re.match(r'([0-9a-f]+) <([^>]+)>', operands)
             if target:
@@ -193,7 +228,8 @@ def elf_facts(path, data):
             test = re.match(r'([wx]\d+),\s*([0-9a-f]+)', operands)
             if test:
                 current['zero_tests'].append({'at': address, 'register': test[1],
-                                              'test': op, 'target': int(test[2], 16)})
+                                              'test': op, 'target': int(test[2], 16),
+                                              'origin_candidate': origins.get('x' + test[1][1:], 'unknown') if trace else 'not_traced'})
         # Bounded ADRP/ADD candidate detection; not full data-flow analysis.
         page = re.match(r'(x\d+),\s*([0-9a-f]+)', operands) if op in ('adrp', 'adr') else None
         add = re.match(r'(x\d+),\s*(x\d+),\s*#(0x[0-9a-f]+|\d+)', operands) if op == 'add' else None
@@ -219,6 +255,8 @@ def elf_facts(path, data):
                     current['string_candidates'].append(candidate)
         if op in ('bl', 'blr'):
             registers = {r: v for r, v in registers.items() if 19 <= int(r[1:]) <= 29}
+            origins = {r: v for r, v in origins.items() if 19 <= int(r[1:]) <= 29}
+            comparison = None
         elif op in ('ret', 'b'):
             registers.clear()
     selected = []
@@ -230,6 +268,7 @@ def elf_facts(path, data):
             f['calls_truncated'] = len(f['calls']) > 180
             f['calls'] = f['calls'][:180]
             f['zero_tests'] = f['zero_tests'][:60]
+            f['selector_tests'] = f['selector_tests'][:40]
             f['string_candidates'] = list({c['id']: c for c in f['string_candidates']}.values())
             selected.append(f)
     return {'supported_aarch64': True, 'needles': needles, 'symbols': symbols[:180],
@@ -243,6 +282,11 @@ def main():
               'executed_firmware': False, 'usb_access': False, 'complete_callgraph': False,
               'live_namespace_verified': False, 'camera_upload_enabled': False,
               'scripts': [], 'elf': [], 'symlinks': [], 'binary_needle_inventory': []}
+    report['identity_pins'] = {domain: manifest[path]['sha256'] for domain, path in (
+        ('AP_appFw', 'menu-root/usr/lib/appFw.so'),
+        ('CP_cpapp', 'menu-root/cp/cpapp-b.bin'),
+        ('AP_Jiritsu', 'menu-root/usr/lib/libJiritsu.so'))}
+    report['scope'] = 'AP userspace and original boot scripts; CP inventoried, not disassembled'
     report['image_paths'] = [image_path_facts(ROOT / 'menu-root', p)
                              for p in ('/tmp', '/tmp/jiritsu', '/etc/ld.so.preload')]
     candidates = []
@@ -267,7 +311,8 @@ def main():
             report['binary_needle_inventory'].append(item | {'needles': hits})
         if relative.startswith('menu-root/sbin/init') or (len(data) < 131072 and data.startswith(b'#!') and hits):
             report['scripts'].append(item | {'facts': script_facts(data, 'fstab' in relative)})
-        if relative in ('menu-root/usr/lib/libJiritsu.so', 'menu-root/usr/lib/libusbcmd.so'):
+        if relative in ('menu-root/usr/lib/libJiritsu.so', 'menu-root/usr/lib/libusbcmd.so',
+                        'menu-root/usr/bin/bootin.elf', 'menu-root/usr/bin/im.elf'):
             candidates.append((path, data, item))
     for path, data, item in candidates:
         report['elf'].append(item | elf_facts(path, data))
