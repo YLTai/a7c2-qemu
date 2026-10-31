@@ -19,7 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static int child(void) {
+static int child(int lazy) {
     DIR *directory = opendir("/proc/self/fd");
     if (!directory) return 19;
     int own = dirfd(directory);
@@ -49,7 +49,7 @@ static int child(void) {
         caps[0].inheritable || caps[1].inheritable) return 23;
     printf("JIRITSU_PROBE restricted=1 uid=%u\n", (unsigned)getuid());
     fflush(stdout);
-    void *handle = dlopen("/usr/lib/libJiritsu.so", RTLD_NOW | RTLD_LOCAL);
+    void *handle = dlopen("/usr/lib/libJiritsu.so", (lazy ? RTLD_LAZY : RTLD_NOW) | RTLD_LOCAL);
     if (!handle) {
         const char *error = dlerror();
         const char *prefix = "undefined symbol: ";
@@ -68,6 +68,19 @@ static int child(void) {
         printf("JIRITSU_PROBE loaded=0 category=%d\n", symbol ? 1 : 2);
         fflush(stdout); return 31;
     }
+    if (lazy) {
+        /* Fixed selector/base only. This original helper constructs a pathname;
+         * no upload/read/delete handler, native payload or service init is called. */
+        int (*filename)(unsigned, const char *, char *, unsigned) =
+            dlsym(handle, "get_access_filename");
+        char path[514] = {0};
+        if (!filename) return 33;
+        int rc = filename(2, "/tmp/jiritsu", path, sizeof(path));
+        int matched = !strcmp(path, "/tmp/jiritsu/libJit.so");
+        printf("JIRITSU_PROBE original_filename_helper=1 matched=%d return=%d\n", matched, rc);
+        fflush(stdout);
+        if (!matched) return 34;
+    }
     int set = dlsym(handle, "adj_cmd_set_file2") != NULL;
     int get = dlsym(handle, "adj_cmd_get_file2") != NULL;
     printf("JIRITSU_PROBE loaded=1 set_export=%d get_export=%d handlers_called=0\n", set, get);
@@ -79,13 +92,15 @@ static double now(void) {
     if (clock_gettime(CLOCK_MONOTONIC, &t)) return -1;
     return t.tv_sec + t.tv_nsec / 1e9;
 }
-static int run(void) {
+static int one(int lazy) {
+    printf("JIRITSU_PROBE binding=%s\n", lazy ? "lazy" : "now");
+    fflush(stdout);
     double deadline = now();
     if (deadline < 0) return 40;
     deadline += 10;
     pid_t pid = fork();
     if (pid < 0) return 41;
-    if (!pid) _exit(child());
+    if (!pid) _exit(child(lazy));
     int status = 0;
     for (;;) {
         pid_t got = waitpid(pid, &status, WNOHANG);
@@ -105,4 +120,4 @@ static int run(void) {
            WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     fflush(stdout); return 0;
 }
-void _start(void) { _exit(run()); }
+void _start(void) { int rc = one(0); if (!rc) rc = one(1); _exit(rc); }

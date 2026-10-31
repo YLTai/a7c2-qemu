@@ -101,7 +101,7 @@ try:
     result['jiritsu_loader_probe']={
         'records':re.findall(r'(?m)^JIRITSU_PROBE ([A-Za-z0-9_= -]+)\r?$',probe),
         'completed':'JIRITSU_PROBE_RC=0' in probe,
-        'original_handlers_called':False,'sony_usb_verified':False}
+        'original_handlers_called':False,'original_filename_helper_expected':True,'sony_usb_verified':False}
     if not result['jiritsu_loader_probe']['completed']:raise RuntimeError('original_probe_incomplete')
     phase='native_suite';text=command('sd_suite')
     result['mount_verified']=bool(re.search(r'SD_ROUTE_MOUNT fixture=tmpfs readonly=1 path=/tmp/sd-route/card',text))
