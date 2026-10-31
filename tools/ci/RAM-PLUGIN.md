@@ -173,8 +173,9 @@ original camera may change native settings in RAM; they disappear with the VM.
 
 The existing framework's fixed `fl23_status` request reads only native bindings
 and hashes three fixed files. It cannot select arbitrary keys, paths or addresses.
-The observer separately records bounded changes of the pinned current-Look model
-following original frames. Binding 10/11 alone is not proof of a selected Look.
+The observer separately records the pinned camera product-model index once
+following an original frame. It is not a Creative Look selection index.
+Binding 10/11 alone is not proof of a selected Look.
 
 [Run 41196866130](https://github.com/YLTai/a7c2-qemu/actions/runs/41196866130)
 verified enabled bindings, seven AP fields after the first original frame, exact

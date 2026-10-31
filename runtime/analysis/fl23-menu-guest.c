@@ -39,18 +39,17 @@ static uintptr_t live_base;
 static int live_enabled;
 static unsigned live_sampled;
 static unsigned live_ready;
-static unsigned model_last=UINT32_MAX,model_events;
 static void (*live_log)(const char *,const char *);
 
 void fl23_menu_guest_observe(void) {
-    if(!__atomic_load_n(&live_ready,__ATOMIC_ACQUIRE))return;
+    if(!__atomic_load_n(&live_ready,__ATOMIC_ACQUIRE) ||
+       __atomic_exchange_n(&live_sampled,1,__ATOMIC_ACQ_REL))return;
+    /* This is the camera PRODUCT index, not the selected Creative Look. */
     unsigned index=__atomic_load_n((unsigned *)(live_base+0x5bc35b0),__ATOMIC_RELAXED);
-    if(index<=25 && __atomic_exchange_n(&model_last,index,__ATOMIC_RELAXED)!=index &&
-       __atomic_fetch_add(&model_events,1,__ATOMIC_RELAXED)<64) {
+    if(index<=25) {
         char text[64];snprintf(text,sizeof text,"index=%u after_original_frame=1",index);
-        live_log("FL23_MENU_MODEL ",text);
+        live_log("FL23_MENU_PRODUCT ",text);
     }
-    if(__atomic_exchange_n(&live_sampled,1,__ATOMIC_ACQ_REL))return;
     const unsigned char zero[4]={0};int matches=1;
     for(unsigned i=0;i<7;i++)
         if(memcmp((void *)(live_base+offsets[i]),live_enabled?fl23_values[i]:zero,fl23_sizes[i]))matches=0;
@@ -159,7 +158,7 @@ static int mapping_check(struct guest_state *s) {
     return bad;
 #endif
 }
-static int model_mapping_check(uintptr_t base) {
+static int product_mapping_check(uintptr_t base) {
 #ifdef FL23_HOST_TEST
     (void)base;return 0;
 #else
@@ -228,7 +227,7 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     char detail[120];snprintf(detail,sizeof detail,"result=%d permissions=%d,%d,%d,%d",mapped,s.prot[0],s.prot[1],s.prot[2],s.prot[3]);
     log("FL23_MENU_MAP ",detail);
     if(mapped)return 3;
-    if(model_mapping_check(base))return 14;
+    if(product_mapping_check(base))return 14;
     log("FL23_MENU_STAGE ","lookup");
     backup_read_fn rd=(backup_read_fn)lookup(handle,"Backup_nread");
     backup_write_fn wr=(backup_write_fn)lookup(handle,"Backup_write");

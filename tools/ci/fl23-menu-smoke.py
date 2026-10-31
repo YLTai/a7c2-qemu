@@ -112,7 +112,7 @@ def menu_frame(label):
     (OUT/('fl23-'+label+'.png')).write_bytes((OUT/'fl23-latest.png').read_bytes())
     RESULT.setdefault('menu_frames',[]).append({'label':label,
         'pixel_sha256':last_image['pixel_sha256'],'screen':last_image['firstboot_ui'],
-        'model_indices':[int(n) for n in re.findall(r'FL23_MENU_MODEL index=(\d+) after_original_frame=1',console())]})
+        'product_model_indices':[int(n) for n in re.findall(r'FL23_MENU_PRODUCT index=(\d+) after_original_frame=1',console())]})
 
 def program_mode():
     # Existing reviewed physical MODE dial input. No model write or menu gate
@@ -268,8 +268,8 @@ except Exception as error:
                                  if stage in ('lookup','backup_read','backup_originals','ap_failed','ap_applied','joint_failed','joint_applied')]
         RESULT['broker_ready']='FL23_MENU_READY' in text
         RESULT['ap_after_first_frame']='FL23_MENU_LIVE ap_fields_match=1' in text
-        RESULT['native_model_indices']=[int(n) for n in re.findall(
-            r'FL23_MENU_MODEL index=(\d+) after_original_frame=1',text)]
+        RESULT['product_model_indices']=[int(n) for n in re.findall(
+            r'FL23_MENU_PRODUCT index=(\d+) after_original_frame=1',text)]
         if last_image:RESULT['last_native_screen']=last_image['firstboot_ui']
         if not fatal and vm.status()['state']=='running' and last_image is None:
             try:capture('failure')

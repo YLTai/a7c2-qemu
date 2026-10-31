@@ -12,9 +12,9 @@ from pathlib import Path
 import struct
 
 SOURCE_SHA256 = '2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b'
-# Read-only live-model scalar identified in the pinned research probe. Never a
+# Read-only camera product-model scalar identified in the pinned research probe. Never a
 # patch target; audit its actual ELF placement before adding a native reader.
-MODEL_VA = 0x5bc35b0
+PRODUCT_MODEL_VA = 0x5bc35b0
 # Fixed semantic IDs; neither offsets nor replacement values are caller inputs.
 FIELDS = (
     ('selection', 0x4b2ed19, bytes(2), b'\x01\x01'),
@@ -149,15 +149,15 @@ def audit_original(data):
     return _section_audit(data, mappings)
 
 
-def model_mapping_audit(data):
+def product_mapping_audit(data):
     if hashlib.sha256(data).hexdigest() != SOURCE_SHA256:
         raise Rejected('source_identity')
     segments = [s for s in _load_segments(data)
-                if s[1] <= MODEL_VA and MODEL_VA + 4 <= s[1] + s[3]]
+                if s[1] <= PRODUCT_MODEL_VA and PRODUCT_MODEL_VA + 4 <= s[1] + s[3]]
     if len(segments) != 1:
         return {'unique_mapping': False}
     offset, va, filesz, _, flags = segments[0]
-    filebacked = MODEL_VA + 4 <= va + filesz
+    filebacked = PRODUCT_MODEL_VA + 4 <= va + filesz
     shoff = struct.unpack_from('<Q', data, 40)[0]
     shsize, shnum = struct.unpack_from('<HH', data, 58)
     if shsize != 64 or not 0 < shnum < 65535 or shoff + shnum * shsize > len(data):
@@ -166,10 +166,10 @@ def model_mapping_audit(data):
     for i in range(shnum):
         _, typ, attr, address, _, size, _, _, _, _ = struct.unpack_from(
             '<IIQQQQIIQQ', data, shoff + i * shsize)
-        if attr & 2 and address <= MODEL_VA and MODEL_VA + 4 <= address + size:
+        if attr & 2 and address <= PRODUCT_MODEL_VA and PRODUCT_MODEL_VA + 4 <= address + size:
             sections.append((typ, attr))
     return {'unique_mapping': True, 'file_backed': filebacked,
-            'file_offset': offset + MODEL_VA - va if filebacked else None,
+            'file_offset': offset + PRODUCT_MODEL_VA - va if filebacked else None,
             'elf_flags': flags, 'section_valid': len(sections) == 1,
             'nonexec_data': len(sections) == 1 and sections[0][0] in (1,8)
                             and not sections[0][1] & 4}
@@ -178,11 +178,11 @@ def model_mapping_audit(data):
 def inspect_original(data):
     # Identity check precedes ELF inspection; no user-selectable digest bypass.
     audit = audit_original(data)
-    model = model_mapping_audit(data)
+    model = product_mapping_audit(data)
     if (not model.get('unique_mapping') or not model.get('file_backed') or
             not model.get('nonexec_data') or model.get('elf_flags') != 6 or
             model.get('file_offset') != 0x5bb35b0):
-        raise Rejected('model_mapping')
+        raise Rejected('product_mapping')
     return _require_data_pages(audit)
 
 
@@ -223,7 +223,7 @@ def main():
     # Only fixed-schema status is public; no memory contents, file path or maps.
     print(json.dumps({'passed': True, 'scope': 'original_elf_menu_data_only',
                       'fields_verified': len(fields), 'guest_enabled': False,
-                      'read_only_model_mapping': model_mapping_audit(data),
+                      'read_only_product_mapping': product_mapping_audit(data),
                       'fields_requiring_permission_transition': sum(
                           not f['elf_writable'] or f['elf_executable'] for f in fields)}))
     return 0

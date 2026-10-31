@@ -40,15 +40,14 @@ static void logger(const char *name,const char *text){
     if(!strcmp(name,"FL23_MENU_ROLLBACK "))rollback++;
     if(!strcmp(name,"FL23_MENU_ORIGINAL "))originals++;
     if(!strcmp(name,"FL23_MENU_LIVE ")&&strstr(text,"ap_fields_match=1"))live_matches++;
-    if(!strcmp(name,"FL23_MENU_MODEL "))model_reads++;
+    if(!strcmp(name,"FL23_MENU_PRODUCT "))model_reads++;
 }
 static uintptr_t base;
 static void reset(void){
     entered=0;receipt_bad=map_bad=protect_calls=protect_fail=backup_calls=backup_fail=rollback_bad=0;
     ready=rollback=backup_reads=relro=0;backup[0]=backup[1]=0;
     originals=live_matches=map_calls=map_changed=0;live_base=0;live_log=NULL;live_sampled=live_ready=0;
-    model_last=UINT32_MAX;model_events=0;
-    model_reads=0;*(unsigned *)(base+0x5bc35b0)=0;
+    model_reads=0;*(unsigned *)(base+0x5bc35b0)=16;
     file_hash_calls=file_hash_fail=0;
     for(unsigned i=0;i<7;i++)memset((void *)(base+offsets[i]),0,4);
     unsetenv("MENU_FL23_TEST_ROLLBACK");
@@ -103,9 +102,6 @@ int main(void){
     reset();assert(!run());assert(ready==1&&protect_calls==8&&backup[0]==10&&backup[1]==11);
     fl23_menu_guest_observe();fl23_menu_guest_observe();assert(live_matches==1);
     assert(model_reads==1);
-    *(unsigned *)(base+0x5bc35b0)=16;fl23_menu_guest_observe();assert(model_reads==2);
-    *(unsigned *)(base+0x5bc35b0)=17;fl23_menu_guest_observe();assert(model_reads==3);
-    *(unsigned *)(base+0x5bc35b0)=26;fl23_menu_guest_observe();assert(model_reads==3);
     assert(run()==1&&ready==1);
     reset();relro=1;assert(!run()&&ready==1&&protect_calls==8);
     reset();relro=1;map_changed=1;assert(run()==13&&!ready);

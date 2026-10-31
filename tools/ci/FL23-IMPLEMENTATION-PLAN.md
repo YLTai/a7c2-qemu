@@ -268,3 +268,14 @@ Subsequent diagnostic-only runs reuse this known baseline and focus on menu
 navigation; the full default run retains baseline, rollback, restart and Hello
 World regression. The broker also adds same-VM Backup SHA checks immediately
 before/after the transaction, and during rollback; mismatch is fail-closed.
+
+## Correction: product model is not selected Look
+
+The earlier description of relative VA 0x5bc35b0 as a current-Look scalar was
+incorrect. Pinned upstream `core.py:parse_native('probe')` requires 16 for camera
+product identification and returns product_column 9. Observations of 16 therefore
+prove no Look selection at all. Old artifact fields named model_indices must be
+read only as product identity, not FL2/FL3 acceptance. Code now names this
+PRODUCT, samples it once, and explicitly excludes it from selection evidence.
+Original menu confirmation/readback remains necessary. No passing selection
+result was produced using the misidentified field.
