@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 static void put(const char *path, const void *data, size_t size)
@@ -20,6 +21,11 @@ int main(int argc, char **argv)
 {
     assert(argc == 3);
     const char *scenario = argv[2];
+    if (!strcmp(scenario, "non-tmpfs")) {
+        struct statfs filesystem;
+        assert(statfs("/tmp", &filesystem) == 0);
+        assert(filesystem.f_type != 0x01021994);
+    }
     assert(mkdir("/tmp/jiritsu", 0700) == 0);
     unsigned char blob[65537], request[32] = "A7NOPQ01", result[33];
     for (int i = 0; i < 16; ++i) request[8 + i] = (unsigned char)(i + 1);

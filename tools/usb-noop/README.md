@@ -121,7 +121,8 @@ checks the dependency/entry/stack properties, and tests a synthetic AArch64
 existing approved bwrap profile, with private tmpfs `/tmp`, no hardware USB and
 no firmware. It checks same-process/thread return, result/nonce, unlink and
 post-cleanup absence; negative cases cover malformed/missing requests and existing
-or symlinked results. The harness's normal process exit occurs only after the
+or symlinked results. A separate disposable non-tmpfs fixture verifies rejection
+without self-unlink or result creation. The harness's normal process exit occurs only after the
 library returns; the library never exits its host.
 
 Host fault tests distinguish pre-invoke staging residue, unknown invocation,

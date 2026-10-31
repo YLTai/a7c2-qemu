@@ -23,6 +23,10 @@ for scenario in success bad-request missing-request existing-result symlink-resu
         --tmpfs /tmp --dev /dev --proc /proc \
         "$qemu" -L /usr/aarch64-linux-gnu "$out/loader" "$out/noop.so" "$scenario"
 done
+mkdir "$out/nonvolatile-fixture"
+timeout 20 bwrap --unshare-all --die-with-parent --ro-bind / / \
+    --bind "$out/nonvolatile-fixture" /tmp --dev /dev --proc /proc \
+    "$qemu" -L /usr/aarch64-linux-gnu "$out/loader" "$out/noop.so" non-tmpfs
 # Publish fixed metadata only; no uploadable payload is distributed in this stage.
 python3 - "$out/noop.so" <<'PY'
 import hashlib, json, pathlib, sys
@@ -33,7 +37,7 @@ report = {'schema': 'a7c2-offline-noop/1', 'hardware_access': False,
           'payload_bytes': len(payload), 'reproducible_build': True,
           'camera_upload_enabled': False,
           'cases': ['success', 'bad-request', 'missing-request',
-                    'existing-result', 'symlink-result']}
+                    'existing-result', 'symlink-result', 'non-tmpfs']}
 pathlib.Path('ci-logs/usb-noop-result.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report))
 PY
