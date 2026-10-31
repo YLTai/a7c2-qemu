@@ -21,6 +21,7 @@ def follow(instructions, start, selector, read_integer):
         return get(text)
     for _ in range(48):
         op, args = instructions[pc]
+        args = args.split("//", 1)[0].strip()
         p = [part.strip() for part in args.split(',')]
         next_pc = pc + 4
         if op in ('stp', 'str') and '[sp' in args:

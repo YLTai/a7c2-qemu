@@ -17,5 +17,9 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(follow(code, 0, 1, table)['target'], 0x20c)
         self.assertEqual(follow(code, 0, 2, table)['target'], 0x214)
         with self.assertRaises(ValueError): follow(code, 0, 3, table)
+    def test_disassembler_immediate_comment_is_not_an_operand(self):
+        edge = follow({0: ('mov', 'x0, #0x40 // #64'), 4: ('br', 'x0')},
+                      0, 1, lambda *args: 0)
+        self.assertEqual(edge['target'], 64)
     def test_unsupported_stops(self):
         with self.assertRaises(ValueError): follow({0: ('blr', 'x0')}, 0, 1, lambda *args: 0)
