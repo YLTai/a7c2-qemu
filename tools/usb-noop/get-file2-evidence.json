@@ -1,0 +1,222 @@
+{
+  "schema": "get-file2-evidence/1",
+  "hardware_access": false,
+  "camera_upload_enabled": false,
+  "complete_wire_mapping": false,
+  "procfs_complete_read_verified": false,
+  "path_metadata_route_verified": false,
+  "upstream_commit": "ef7db116e13e37be91e9af20360dc9bba8d64a9b",
+  "analyzer_commit": "5d400aa71baff7021e2b4492580fdf6dcc52c307",
+  "run": 41216512832,
+  "artifact": 13048131967,
+  "report_bytes": 149403,
+  "report_sha256": "8a7b713382c91335a2f618052cb51e440fba0da53f1e564e279e6cddca4a718d",
+  "files": [
+    {
+      "path": "menu-root/usr/lib/libJiritsu.so",
+      "sha256": "87dc24912938be8dd59965e62306e79fdd8c672e10ed6f9734c88454b1d144a8",
+      "facts": [
+        {
+          "function": "adj_cmd_get_file2",
+          "records": [
+            {
+              "at": 41512,
+              "kind": "conditional",
+              "condition": "cbz",
+              "value_candidate": "load8(offset(argument0,40))",
+              "bit": null,
+              "target": 41532
+            },
+            {
+              "at": 41544,
+              "kind": "conditional",
+              "condition": "cbz",
+              "value_candidate": "unknown",
+              "bit": null,
+              "target": 41524
+            },
+            {
+              "at": 41564,
+              "kind": "call",
+              "target": 24160,
+              "symbol": "sys_mount@plt",
+              "arguments_candidate": {
+                "x0": "offset(unknown,2929)",
+                "x1": "offset(unknown,2911)",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            },
+            {
+              "at": 41848,
+              "kind": "conditional",
+              "condition": "ne",
+              "target": 42032,
+              "comparison": {
+                "at": 41844,
+                "lhs_candidate": "load16(offset(argument0,40))",
+                "constant": 768,
+                "test": "cmp"
+              }
+            },
+            {
+              "at": 42040,
+              "kind": "call",
+              "target": 23920,
+              "symbol": "_ZN10libJiritsu11CFileAccess4statEPKcP13tag_FILE_INFO@plt",
+              "arguments_candidate": {
+                "x0": "offset(offset(offset(offset(frame,-4096),-640),-96),104)",
+                "x1": "offset(offset(offset(offset(frame,-4096),-640),-96),2728)",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            },
+            {
+              "at": 42096,
+              "kind": "load",
+              "bits": 64,
+              "base_candidate": "offset(offset(offset(frame,-4096),-640),-96)",
+              "offset": 4808,
+              "destination": "x23"
+            },
+            {
+              "at": 42276,
+              "kind": "call",
+              "target": 27232,
+              "symbol": "_ZN10libJiritsu11CFileAccess4readEPvm@plt",
+              "arguments_candidate": {
+                "x0": "offset(offset(offset(offset(frame,-4096),-640),-96),624)",
+                "x1": "unknown",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            },
+            {
+              "at": 42304,
+              "kind": "call",
+              "target": 25488,
+              "symbol": "_ZN10libJiritsu11CFileAccess5fsyncEv@plt",
+              "arguments_candidate": {
+                "x0": "offset(offset(offset(offset(frame,-4096),-640),-96),624)",
+                "x1": "unknown",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            },
+            {
+              "at": 42320,
+              "kind": "conditional",
+              "condition": "eq",
+              "target": 42348,
+              "comparison": {
+                "at": 42316,
+                "lhs_candidate": "load64(offset(offset(offset(offset(frame,-4096),-640),-96),4808))",
+                "rhs_candidate": "call_result_at:0xa524",
+                "test": "cmp"
+              }
+            }
+          ]
+        },
+        {
+          "function": "stat_thunk_0x122f0",
+          "records": [
+            {
+              "at": 74480,
+              "kind": "assignment",
+              "destination": "x2",
+              "value_candidate": "argument1"
+            },
+            {
+              "at": 74484,
+              "kind": "assignment",
+              "destination": "x1",
+              "value_candidate": "argument0"
+            },
+            {
+              "at": 74488,
+              "kind": "assignment",
+              "destination": "x0",
+              "value_candidate": "constant:0"
+            },
+            {
+              "at": 74492,
+              "kind": "jump",
+              "target": 27008,
+              "symbol": "__xstat@plt",
+              "arguments_candidate": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "menu-root/usr/lib/libsencore.so",
+      "sha256": "3362d4b6e03dc517b04f1eb04d4199ff16d33f6e8f1bfddce657a375778d79e7",
+      "facts": [
+        {
+          "function": "_ZN29SubsystemCommunicationCommand16TransactionStartEPK12SenserPacketPKvS4_",
+          "records": [
+            {
+              "at": 64804,
+              "kind": "store",
+              "destination_candidate": "offset(offset(argument0,24),36)",
+              "value_candidate": "load16(offset(argument3,0))"
+            },
+            {
+              "at": 64816,
+              "kind": "store",
+              "destination_candidate": "offset(offset(argument0,24),38)",
+              "value_candidate": "load16(offset(argument3,2))"
+            },
+            {
+              "at": 64860,
+              "kind": "call",
+              "target": 42576,
+              "symbol": "_Z9SerializePFiPhmEPvm@plt",
+              "arguments_candidate": {
+                "x0": "load64(offset(unknown,3712))",
+                "x1": "offset(argument0,64)",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            },
+            {
+              "at": 65656,
+              "kind": "call",
+              "target": 43888,
+              "symbol": "_Z15MakeOsalMessageP26SubsystemCommunicationInfo@plt",
+              "arguments_candidate": {
+                "x0": "offset(argument0,24)",
+                "x1": "unknown",
+                "x2": "unknown",
+                "x3": "unknown",
+                "x4": "unknown"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "menu-root/usr/lib/libusbcmd.so",
+      "sha256": "17763f7d9bba369fc7ef6f5935ff1b15c5e8da9e180f291d920f284618a2d787",
+      "facts": []
+    }
+  ],
+  "open_edges": [
+    "Serialize callback/input cursor and parameter length",
+    "MakeOsalMessage mapping to receiver record",
+    "Indirect command switch and high-capacity wrapper to adj_cmd_get_file2",
+    "Mode-zero selector-validation predicate before mount",
+    "Complete stat-field to read-length flow through unmodelled operations"
+  ],
+  "synthetic_tests": {
+    "combined_count": 19,
+    "prove_camera_behavior": false
+  }
+}

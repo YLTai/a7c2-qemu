@@ -178,3 +178,10 @@ Compact JSON preserves the facts within the unchanged 400000-byte ceiling; no
 raw private diagnostics were exported to resolve that failure. Local synthetic
 checks covered fstab extraction, guest-absolute symlink confinement and AArch64
 byte-selector comparison/branch provenance.
+
+## Follow-up: ordinary reads versus procfs
+
+The bounded [GET_FILE2 investigation](GET-FILE2.md) distinguishes the actual
+command-15/17 stability-test packets from native upload, identifies the specific
+log-flush gate and records unresolved wire/handler and size-flow edges. It does
+not establish a usable procfs/path-metadata route or enable hardware access.

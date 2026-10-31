@@ -160,3 +160,6 @@ The first run, 41210949334, failed its positive result assertion despite a
 successful dlopen. It exposed wrong manually specified open flags for AArch64.
 The corrected candidate takes flags and syscall numbers from target headers;
 the passing result was not obtained by relaxing the assertion.
+
+See [GET-FILE2.md](GET-FILE2.md) for the offline regular-file/procfs evidence
+boundary and synthetic protocol tests. Camera execution remains disabled.
