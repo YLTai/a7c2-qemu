@@ -54,8 +54,27 @@ crash or wall-timeout tests. Invalid programs exit 41. Host sanitizer tests chec
 fixtures, truncated/mutated inputs, valid prefixes with invalid tails, bounds,
 budget exhaustion, FIFO and symlink rejection. Guest tests require exact glyph
 and negative pixels from actual QMP screenshots, recovery after each bad input,
-normal save/close, and a new VM instance. Real guest results are pending for this
-revision; host tests are not evidence of guest display success.
+normal save/close, and a new VM instance. Real guest results passed in
+[run 41175323027](https://github.com/YLTai/a7c2-qemu/actions/runs/41175323027)
+at commit `79646f6846b8c4bdeb0579fdebbb8faa591c8d2a`. The original camera UI,
+Hello World, off, missing input, ELF rejection, valid prefix with malformed tail,
+explicit abort, budget exhaustion, unknown opcode, repeated recovery, and new-VM
+restart all passed. One normal controller cleanup attempt failed after SD export;
+the second normal close attempt succeeded, then a fresh VM started successfully.
+Final close succeeded on its first attempt. No forced-close bypass was added.
+
+The actual Hello World PNG has SHA-256
+`7b7c5ad7ef3fec58f7cb2c36a43aa66bb36010d1a19065403a8c00b9bb3ad7a9`.
+Only its 612 expected glyph pixels differ from the original camera image. Every
+failure/off PNG is byte-identical to the original image; restart is byte-identical
+to Hello World. These are QMP ramfb screenshots, not host-rendered images.
+The 2,468-byte / 613-instruction Hello World program has SHA-256
+`4f8eb5d1fe0241a94ad699117d67f022dd89ad9e803ae0081d55c7b22f75198d`.
+
+QEMU's exact existing binary cache was restored and verified; QEMU was not
+recompiled. Native interpreter crashes, wall-watchdog firing, arbitrary kernel
+fault recovery and real hardware were not tested. The `crash`/`timeout` labels
+must not be read as claims about those untested cases.
 
 Dispatch `qemu-build.yml` on `ci/qemu-actions` with `firmware=true`. The existing
 `SONY_FIRMWARE_URL` repository secret supplies the temporary input. QEMU's exact
