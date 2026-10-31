@@ -8444,7 +8444,7 @@ int osal_rcv_msg_tmo(unsigned int id, void **message, long timeout) {
         if(getenv("MENU_OBSERVE_INPUT") && real_msg_size && real_msg_size(*message)==32) {
             static unsigned int count;
             unsigned int n=__atomic_add_fetch(&count,1,__ATOMIC_RELAXED);
-            if(n<=128 || !(n&(n-1))) {
+            if(n<=(getenv("MENU_FL23_MENU")?512U:128U) || !(n&(n-1))) {
                 char text[260];snprintf(text,sizeof text,"n=%u tid=%ld words=[%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x]",
                     n,syscall(178),ev[0],ev[1],ev[2],ev[3],ev[4],ev[5],ev[6],ev[7]);
                 record("INPUT_EVENT32 ",text);

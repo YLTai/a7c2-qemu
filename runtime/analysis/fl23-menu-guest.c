@@ -163,11 +163,14 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     char detail[120];snprintf(detail,sizeof detail,"result=%d permissions=%d,%d,%d,%d",mapped,s.prot[0],s.prot[1],s.prot[2],s.prot[3]);
     log("FL23_MENU_MAP ",detail);
     if(mapped)return 3;
+    log("FL23_MENU_STAGE ","lookup");
     backup_read_fn rd=(backup_read_fn)lookup(handle,"Backup_nread");
     backup_write_fn wr=(backup_write_fn)lookup(handle,"Backup_write");
     if(!rd||!wr)return 4;
+    log("FL23_MENU_STAGE ","backup_read");
     unsigned char old[2],actual[4],zero[4]={0};
     for(unsigned i=0;i<2;i++)if(rd(ids[i],old+i,1)!=1 || old[i])return 5;
+    log("FL23_MENU_STAGE ","backup_originals");
     for(unsigned i=0;i<7;i++) {
         read_field(&s,(enum fl23_field)i,actual);
         if(memcmp(actual,zero,fl23_sizes[i]))return 6;
@@ -186,11 +189,13 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     struct fl23_transaction transaction={FL23_PRISTINE};
     const struct fl23_io io={&s,read_field,write_field};
     int rc=fl23_menu_apply(&transaction,&io);
+    log("FL23_MENU_STAGE ",rc?"ap_failed":"ap_applied");
     if(!rc)for(unsigned i=0;i<2;i++) {
         unsigned char next=(unsigned char)(10+i),value=0;
         if(wr(0x2cf,ids[i],&next)<0 || rd(ids[i],&value,1)!=1 || value!=next){rc=9;break;}
     }
     if(!rc && getenv("MENU_FL23_TEST_ROLLBACK"))rc=9;
+    log("FL23_MENU_STAGE ",rc?"joint_failed":"joint_applied");
     if(rc) {
         int bk=backup_restore(rd,wr,old),data=restore_data(&s),permissions=protect(&s,1);
         log("FL23_MENU_ROLLBACK ",bk||data||permissions?"complete=0":"complete=1");

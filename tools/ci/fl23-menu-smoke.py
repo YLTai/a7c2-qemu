@@ -13,6 +13,7 @@ from PIL import Image
 ROOT=Path.cwd()
 sys.path.insert(0,str(ROOT/'runtime/analysis'))
 from menu_control import VM
+from menu_live import KEYS
 from guest_test_support import close_vm
 
 spec=importlib.util.spec_from_file_location('reviewed_firstboot',ROOT/'runtime/analysis/check-natural-gtk-input.py')
@@ -63,7 +64,14 @@ def command(case):
     with vm.lock:vm.plugin_result=None
     vm.enqueue({'action':'ram_plugin','case':case})
     result=wait(lambda s:bool(s['plugin_result']),120 if case=='fl23_status' else 40)['plugin_result']
+    if case=='fl23_status':
+        RESULT.setdefault('native_binding_observations',[]).append({
+            'values':[list(map(int,pair)) for pair in re.findall(r'FL23_BINDINGS fl2=(\d+) fl3=(\d+)',result['output'])],
+            'appfw_hash_matches':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b' in result['output'],
+            'backup_hash_matches':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47' in result['output']})
     if result['case']!=case or 'RAM_PLUGIN_RC=0' not in result['output']:
+        RESULT['request_failure']={'case':case,'sha256_applet_missing':'applet not found' in result['output'],
+                                   'return_codes':[int(n) for n in re.findall(r'RAM_PLUGIN_RC=(\d+)',result['output'])]}
         raise RuntimeError('plugin_request_failed')
     return result['output']
 
@@ -80,7 +88,20 @@ def capture(label):
     return last_image
 
 def key(name,mouse=False):
+    inputs=RESULT.setdefault('inputs',[])
+    if len(inputs)>=256:raise RuntimeError('input_budget')
+    before=len(console())
     idle();vm.enqueue({'action':'key','key':name});idle();time.sleep(.3)
+    def edges():
+        pressed=None
+        for n,words in re.findall(r'INPUT_EVENT32 n=(\d+) tid=\d+ words=\[([^]\r\n]+)\]',console()[before:]):
+            values=[int(word,0) for word in words.split(',')]
+            if values==[int(KEYS[name],0),0,1,0,0,0,0,0]:pressed=int(n)
+            elif pressed is not None and values==[int(KEYS[name],0),0,0,0,0,0,0,0] and int(n)>pressed:
+                return [pressed,int(n)]
+        return []
+    wait(lambda _:bool(edges()))
+    inputs.append({'key':name,'submitted':True,'native_edges':edges()})
 
 def start(enabled):
     global vm
@@ -175,6 +196,12 @@ try:
     RESULT['fresh_vm_bindings_restored']=True
 except Exception as error:
     RESULT.update(failed_phase=PHASE,error_type=type(error).__name__)
+    allowed={'plugin_request_failed','binding_readback_mismatch','guest_original_file_changed',
+             'broker_receipt_mismatch','original_ap_fields_unverified','guest_broker_rejected',
+             'guest_unhealthy','invalid_private_run_path','firstboot_incomplete','input_budget',
+             'persistent_instance','guest_wait','close_incomplete','negative_rollback_unverified',
+             'negative_boot_failed_before_broker','negative_broker_wait'}
+    RESULT['failure_reason']=str(error) if str(error) in allowed else 'unclassified'
     if vm:
         text=console()
         fatal=re.findall(r'FL23_MENU_FATAL code=(\d+)',text)
@@ -183,6 +210,14 @@ except Exception as error:
             r'FL23_MENU_MAP result=(\d+) permissions=(\d+),(\d+),(\d+),(\d+)',text)]
         RESULT['rollback_complete']='FL23_MENU_ROLLBACK complete=1' in text
         RESULT['broker_started']='FL23_MENU_BEGIN' in text
+        RESULT['broker_stages']=[stage for stage in re.findall(r'FL23_MENU_STAGE ([a-z_]+)',text)
+                                 if stage in ('lookup','backup_read','backup_originals','ap_failed','ap_applied','joint_failed','joint_applied')]
+        RESULT['broker_ready']='FL23_MENU_READY' in text
+        RESULT['ap_after_first_frame']='FL23_MENU_LIVE ap_fields_match=1' in text
+        if last_image:RESULT['last_native_screen']=last_image['firstboot_ui']
+        if not fatal and vm.status()['state']=='running' and last_image is None:
+            try:capture('failure')
+            except Exception:pass
 finally:
     try:close()
     except Exception as error:RESULT['close_error_type']=type(error).__name__
