@@ -1,4 +1,5 @@
 import struct
+import hashlib
 import unittest
 import os
 from pathlib import Path
@@ -8,7 +9,7 @@ from unittest.mock import patch
 
 from fl23_preflight import (Rejected, _load_segments, _resolve, inspect_original,
                             require_volatile_profile, validate_launch_request,
-                            audit_original, _section_audit, _require_data_pages, FIELDS)
+                            audit_original, model_mapping_audit, _section_audit, _require_data_pages, FIELDS)
 
 
 def elf(segments):
@@ -24,6 +25,23 @@ def elf(segments):
 
 
 class PreflightTests(unittest.TestCase):
+    def test_readonly_model_audit_requires_identity_and_unique_data_mapping(self):
+        data=elf([(512,0x1000,512,1024,6)])
+        struct.pack_into('<Q',data,40,2048)
+        struct.pack_into('<HH',data,58,64,1)
+        struct.pack_into('<IIQQQQIIQQ',data,2048,0,1,3,0x1000,512,512,0,0,1,0)
+        with self.assertRaisesRegex(Rejected,'^source_identity$'):
+            model_mapping_audit(data)
+        with patch('fl23_preflight.SOURCE_SHA256',hashlib.sha256(data).hexdigest()), \
+             patch('fl23_preflight.MODEL_VA',0x1010):
+            result=model_mapping_audit(data)
+            self.assertEqual(result['file_offset'],528)
+            self.assertTrue(result['nonexec_data'])
+        struct.pack_into('<Q',data,2048+8,7)
+        with patch('fl23_preflight.SOURCE_SHA256',hashlib.sha256(data).hexdigest()), \
+             patch('fl23_preflight.MODEL_VA',0x1010):
+            self.assertFalse(model_mapping_audit(data)['nonexec_data'])
+
     def test_identity_cannot_be_bypassed_with_plausible_elf(self):
         with self.assertRaisesRegex(Rejected, '^source_identity$'):
             inspect_original(elf([(512, 0x9000, 512, 1024, 6)]))

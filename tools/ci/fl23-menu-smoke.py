@@ -68,7 +68,8 @@ def command(case):
         RESULT.setdefault('native_binding_observations',[]).append({
             'values':[list(map(int,pair)) for pair in re.findall(r'FL23_BINDINGS fl2=(\d+) fl3=(\d+)',result['output'])],
             'appfw_hash_matches':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b' in result['output'],
-            'backup_hash_matches':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47' in result['output']})
+            'fixed_file_hashes':dict((path,digest) for digest,path in re.findall(
+                r'(?m)^([0-9a-f]{64})\s+(/usr/lib/appFw\.so|/setting/Backup\.bin|/seed-backup\.bin)\r?$',result['output']))})
     if result['case']!=case or 'RAM_PLUGIN_RC=0' not in result['output']:
         RESULT['request_failure']={'case':case,'sha256_applet_missing':'applet not found' in result['output'],
                                    'return_codes':[int(n) for n in re.findall(r'RAM_PLUGIN_RC=(\d+)',result['output'])]}
@@ -173,6 +174,7 @@ def negative_rollback():
         os.environ.pop('A7C2_FL23_NEGATIVE',None)
 
 try:
+    PHASE='disabled_baseline';start(False);close()
     PHASE='enabled_boot';start(True)
     initial=capture('language')
     PHASE='language_navigation'

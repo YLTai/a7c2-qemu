@@ -25,7 +25,8 @@ static int run(int argc,char **argv) {
     if(Backup_nread(0x02cf1287,&a,1)!=1 || Backup_nread(0x02cf1289,&b,1)!=1)return 3;
     if((a!=0&&a!=10)||(b!=0&&b!=11))return 4;
     printf("FL23_BINDINGS fl2=%u fl3=%u selection_verified=0 color_verified=0\n",a,b);
-    if(file_digest("/usr/lib/appFw.so") || file_digest("/setting/Backup.bin"))return 5;
+    if(file_digest("/usr/lib/appFw.so") || file_digest("/setting/Backup.bin") ||
+       file_digest("/seed-backup.bin"))return 5;
     return 0;
 }
 __attribute__((noreturn)) void entry(unsigned long *stack) {
