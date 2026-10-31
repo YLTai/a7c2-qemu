@@ -1,0 +1,650 @@
+{
+  "schema": "sd-route-evidence/1",
+  "code_commit": "5126fe5744bf7bc035ed6827ce103b79340464da",
+  "latest_targeted_run": 41223725068,
+  "artifact_ids": {
+    "guest": 13050859009,
+    "build": 13051406238
+  },
+  "full_regression": {
+    "commit": "07e4e0450ff3761ae0eafad52da08e0b77f35b51",
+    "run": 41222065149,
+    "passed": true,
+    "scopes": [
+      "original_boot",
+      "bytecode_helloworld_recovery",
+      "native_sd_route",
+      "fl23_menu_readback_rollback"
+    ],
+    "existing_bytecode_vm_cleanup_retry": true
+  },
+  "qemu_cache_keys": [
+    "qemu-source-Linux-X64-731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016",
+    "qemu-build-v2-Linux-X64-bceaabc6fad96c013aa9e5e19e55aeb68fbadb626e959079c2f2c6b1af8a18c5"
+  ],
+  "native_guest": {
+    "schema": "sd-route-guest/1",
+    "passed": true,
+    "sony_usb_loader_verified": false,
+    "hardware_access": false,
+    "native_plugin": true,
+    "malicious_native_sandbox": false,
+    "original_hashes_before": true,
+    "ui_before": {
+      "screen_id": 301,
+      "native_press_release": true,
+      "selection_changed": true,
+      "selection_restored": true,
+      "crop_sha256": "5ed77e9575eca73b00d3a6ce2559b6a789940f5440a5e7e46f7da4d0363fca9d"
+    },
+    "mount_verified": true,
+    "stale_session_rejected": true,
+    "cases": [
+      {
+        "case": "disabled",
+        "passed": 1,
+        "entry_ms": 0,
+        "ticks": 30,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      },
+      {
+        "case": "normal",
+        "passed": 1,
+        "entry_ms": 8,
+        "ticks": 59,
+        "exit": 0,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 39
+      },
+      {
+        "case": "missing_card",
+        "passed": 1,
+        "entry_ms": 1,
+        "ticks": 8,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 101,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      },
+      {
+        "case": "missing_file",
+        "passed": 1,
+        "entry_ms": 11,
+        "ticks": 41,
+        "exit": 23,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 20
+      },
+      {
+        "case": "symlink",
+        "passed": 1,
+        "entry_ms": 1,
+        "ticks": 28,
+        "exit": 34,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 15
+      },
+      {
+        "case": "bad_version",
+        "passed": 1,
+        "entry_ms": 3,
+        "ticks": 39,
+        "exit": 22,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 20
+      },
+      {
+        "case": "bad_elf",
+        "passed": 1,
+        "entry_ms": 1,
+        "ticks": 25,
+        "exit": 36,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 13
+      },
+      {
+        "case": "bad_hash",
+        "passed": 1,
+        "entry_ms": 11,
+        "ticks": 42,
+        "exit": 24,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 28
+      },
+      {
+        "case": "oversize",
+        "passed": 1,
+        "entry_ms": 4,
+        "ticks": 35,
+        "exit": 35,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 17
+      },
+      {
+        "case": "exec_denied",
+        "passed": 1,
+        "entry_ms": 1,
+        "ticks": 11,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 13,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      },
+      {
+        "case": "noexec",
+        "passed": 1,
+        "entry_ms": 3,
+        "ticks": 12,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 13,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      },
+      {
+        "case": "ejected",
+        "passed": 1,
+        "entry_ms": 0,
+        "ticks": 8,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 101,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      },
+      {
+        "case": "constructor_crash",
+        "passed": 1,
+        "entry_ms": 3,
+        "ticks": 721,
+        "exit": -1,
+        "signal": 11,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 710
+      },
+      {
+        "case": "run_crash",
+        "passed": 1,
+        "entry_ms": 7,
+        "ticks": 740,
+        "exit": -1,
+        "signal": 11,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 724
+      },
+      {
+        "case": "constructor_hang",
+        "passed": 1,
+        "entry_ms": 6,
+        "ticks": 1500,
+        "exit": -1,
+        "signal": 9,
+        "timeout": 1,
+        "spawn_error": 0,
+        "duplicates": 8,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 2,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 1487
+      },
+      {
+        "case": "run_hang",
+        "passed": 1,
+        "entry_ms": 11,
+        "ticks": 1571,
+        "exit": -1,
+        "signal": 9,
+        "timeout": 1,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 2,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 1561
+      },
+      {
+        "case": "eject_live",
+        "passed": 1,
+        "entry_ms": 2,
+        "ticks": 1495,
+        "exit": -1,
+        "signal": 9,
+        "timeout": 1,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 1,
+        "ownership_lost": 0,
+        "signals": 2,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 1485
+      },
+      {
+        "case": "ownership_lost",
+        "passed": 1,
+        "entry_ms": 2,
+        "ticks": 47,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 110,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 0,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 1,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 0
+      },
+      {
+        "case": "normal",
+        "passed": 1,
+        "entry_ms": 10,
+        "ticks": 51,
+        "exit": 0,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 1,
+        "reaped": 1,
+        "exec_ready": 1,
+        "preload_ready": 1,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 292,
+        "active_ticks": 29
+      },
+      {
+        "case": "disabled",
+        "passed": 1,
+        "entry_ms": 0,
+        "ticks": 33,
+        "exit": -1,
+        "signal": 0,
+        "timeout": 0,
+        "spawn_error": 0,
+        "duplicates": 0,
+        "constrained": 0,
+        "reaped": 0,
+        "exec_ready": 0,
+        "preload_ready": 0,
+        "detached": 0,
+        "ownership_lost": 0,
+        "signals": 0,
+        "load_error": 0,
+        "input_mode": 0,
+        "active_ticks": 0
+      }
+    ],
+    "native_failure_stages": [],
+    "suite_return_codes": [
+      0
+    ],
+    "original_hashes_after": true,
+    "ui_after": {
+      "screen_id": 301,
+      "native_press_release": true,
+      "selection_changed": true,
+      "selection_restored": true,
+      "crop_sha256": "5ed77e9575eca73b00d3a6ce2559b6a789940f5440a5e7e46f7da4d0363fca9d"
+    },
+    "closes": [
+      [
+        {
+          "attempt": 1,
+          "closed": true
+        }
+      ],
+      [
+        {
+          "attempt": 1,
+          "closed": true
+        }
+      ]
+    ],
+    "new_vm_original_hashes": true,
+    "new_vm_no_autoexec": true,
+    "new_vm_ui": {
+      "screen_id": 301,
+      "native_press_release": true,
+      "selection_changed": true,
+      "selection_restored": true,
+      "crop_sha256": "5ed77e9575eca73b00d3a6ce2559b6a789940f5440a5e7e46f7da4d0363fca9d"
+    }
+  },
+  "candidate_build": {
+    "schema": "sd-route-build/1",
+    "sony_usb_abi_verified": false,
+    "files": [
+      {
+        "name": "sd-route-constructor_crash.so",
+        "sha256": "4572112b2f36b8eb2bda34847c3689547ec95ec243e13b4d74d530dd278218f4",
+        "bytes": 5248,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-constructor_hang.so",
+        "sha256": "8af35486c973d146b9a4e1751fb74ca07233d7ceeac32c7346a43eb4434993fb",
+        "bytes": 5216,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-entry.so",
+        "sha256": "766ba5d4a347627bfbd89aed562882a1a507333176a0d3d6cab3c3d022f831e8",
+        "bytes": 3712,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-host",
+        "sha256": "e9c147dd8e104e2e5da196597470dced66d51ce4b42e86b1dcb665aa312f4340",
+        "bytes": 24064,
+        "interpreter": [
+          "/lib/ld-linux-aarch64.so.1"
+        ],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-normal.so",
+        "sha256": "05aeb3f4354284530a1473bb50b45ac2c6601f078312e7cdeee81f6e71bb068e",
+        "bytes": 5128,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-run_crash.so",
+        "sha256": "93a478027329d5833d03c95e274674621bb9ea53889a4209c6c8acb1373f48a0",
+        "bytes": 5248,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-run_hang.so",
+        "sha256": "13aaa90c7aa45924003fe7024424d7792b03b98d053854c057fe9ccd8580d59c",
+        "bytes": 5080,
+        "interpreter": [],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      },
+      {
+        "name": "sd-route-runner",
+        "sha256": "41c775211a60ff30129185fe61400c3fcf1ff18f31e8d8f010f15cc921aa0b0a",
+        "bytes": 13144,
+        "interpreter": [
+          "/lib/ld-linux-aarch64.so.1"
+        ],
+        "needed": [
+          "libc.so.6",
+          "libdl.so.2",
+          "libpthread.so.0",
+          "ld-linux-aarch64.so.1"
+        ],
+        "versions": [
+          "GLIBC_2.17"
+        ]
+      }
+    ]
+  },
+  "screenshot": {
+    "origin_run": 41221698482,
+    "artifact_name": "sd-route-after-down.png",
+    "sha256": "62fe825d9d3661fae84fdfcc8c50be806da1bf5acf235dc1402ff08ad9814c2b"
+  },
+  "boundaries": {
+    "sony_usb_loader_verified": false,
+    "physical_sd_verified": false,
+    "hardware_access": false,
+    "malicious_native_sandbox": false,
+    "spawn_hard_deadline": false
+  },
+  "earlier_dlopen_failure": {
+    "run": 41220562696,
+    "exit": 31,
+    "pre_fix_mode_recorded": false,
+    "pre_fix_dlerror_recorded": false,
+    "pre_fix_umask_recorded": false,
+    "permission_causality": "inference_not_unique_root_cause_proof"
+  }
+}

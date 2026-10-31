@@ -125,3 +125,89 @@ contains simulation-only fixture preparation and assertions; those are not a
 camera deployment mechanism. Replacing a plugin requires a new reviewed build
 and hash pin, which changes the runner pin too. There is no SD-supplied manifest
 that can grant trust to new native code.
+
+## Investigation history and evidence limits
+
+The first instrumented build failure identified unavailable `__isoc23_sscanf`
+and `__isoc23_strtol` symbols against the original glibc 2.25. The implementation
+now uses the existing `__isoc99_sscanf` ABI and its own bounded FD-number parser;
+it does not replace the original runtime libraries.
+
+Run 41220562696 reached the original UI, returned from the entry in 4 ms, exec'd
+the runner, completed the pre-load restrictions and then returned 31 from
+`dlopen`; no constructor receipt was emitted. That run did **not** record the
+file mode, actual dlerror text/class or inherited umask. In particular there is
+no direct pre-fix evidence of `INPUT_MODE=256` (0400), `LOAD_ERROR=1` or umask 077.
+
+The fixture copier previously passed 0444 to open without restoring permissions
+after umask filtering. It now explicitly fchmods its own newly created fixture
+to the requested mode. Run 41221698482 records `INPUT_MODE=292` (0444) and passes
+normal loading with UID/capability/resource constraints retained. Permissions
+are therefore a plausible explanation supported by the repair and outcome,
+not a directly proven unique root cause of the earlier exit 31; other review
+improvements were included in the same iteration. A typed dlerror classifier
+is retained for future failures without exporting uncontrolled loader text.
+
+The successful dedicated run at commit `1e2bea9` exercised 20 native cases and
+original UI selection/restoration before faults, after faults and in a fresh VM.
+Entry-return measurements were 0–7 ms in that run. Both VM closes succeeded on
+the first attempt. Final stricter error-code, active-heartbeat and original-file
+hash checks are part of the subsequent full-regression commit `07e4e04`.
+
+The `reaped` result field means this broker performed the reap. In the deliberate
+`ownership_lost` case it is zero because the test's competing thread has already
+reaped the child; that thread's returned PID is checked, and the broker records
+zero signal attempts. This does not establish a safe reaper contract in Sony's
+unmodified service or eliminate races with an uncontrolled foreign reaper.
+
+## Final delivery
+
+[Full regression 41222065149](https://github.com/YLTai/a7c2-qemu/actions/runs/41222065149)
+passed at `07e4e0450ff3761ae0eafad52da08e0b77f35b51`: original firmware boot,
+existing bytecode HelloWorld/recovery, native SD route, and FL23 original menu,
+parameter readback and rollback. The existing bytecode test needed one VM
+cleanup retry; it is not an all-first-attempt-cleanup result.
+
+A subsequent two-line per-case diagnostic reset is commit
+`5126fe5744bf7bc035ed6827ce103b79340464da`.
+[Targeted verification 41223725068](https://github.com/YLTai/a7c2-qemu/actions/runs/41223725068)
+passed all 20 native cases, original UI checks, original appFw/Backup hashes
+before/after, and fresh-VM recovery. The no-child missing-card case now correctly
+reports zero active-child heartbeat ticks. Entry return was at most 11 ms in
+that run. Both VM closes succeeded on their first attempt. Unchanged full-suite
+areas were not rerun for this diagnostic-only reset.
+
+[The evidence receipt](evidence.json) includes exact commits, artifact IDs,
+case records, build hashes, ABI dependencies, cache keys and limits. Both exact
+QEMU source and binary caches were restored during the full run. Own-program
+NEEDED libraries are libc, libdl, libpthread and the AArch64 loader; imported
+symbol versions are GLIBC_2.17, tested against the original guest's glibc 2.25.
+The executable interpreter is `/lib/ld-linux-aarch64.so.1`.
+
+| New source | Lines | Role |
+|---|---:|---|
+| `runtime/analysis/sd-route-entry.c` | 15 | Minimal fixed request entry |
+| `runtime/analysis/sd-route-host.c` | 265 | Resident broker plus synthetic host/fixtures |
+| `runtime/analysis/sd-route-runner.c` | 80 | Validation, restrictions, native load |
+| `runtime/analysis/sd-route-common.h` | 57 | Mount, file and SHA checks |
+| `runtime/analysis/sd-route-plugin.c` | 42 | Native success/fault fixtures |
+| `runtime/analysis/build-sd-route.sh` | 50 | Original-ABI build and receipts |
+| `tools/ci/sd-route-smoke.py` | 135 | Guest/native/UI assertions |
+
+These seven files total 644 lines, excluding existing SHA code, integration
+edits, documentation and JSON evidence. Final binaries: entry 3712 bytes,
+runner 13144 bytes, synthetic host/broker 24064 bytes. Payload binaries are not
+published in the CI artifacts; the source and metadata are reviewable.
+
+The recovery screenshot is from successful dedicated run 41221698482 and was
+visually inspected and saved to the user's Library. The final evidence receipt
+pins its PNG hash and source run. It shows original UI selection after faults,
+not a native plugin overlay or real-camera photo.
+
+Remaining integration blockers are concrete: the unmodified Sony service has
+no verified `sd_route_request_v1` broker ABI or exclusive-child-reaper contract;
+physical SD path/filesystem behavior and the Sony USB invoke lifecycle are not
+validated by this synthetic host. A stuck spawn needs external supervision for
+a hard overall deadline. No hardware operation is pending, and the camera upload
+CLI remains disabled. This is the completed QEMU fault-boundary prototype, not
+an installable camera loader or a malicious-native isolation claim.
