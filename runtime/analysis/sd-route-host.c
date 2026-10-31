@@ -17,6 +17,7 @@ static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t wake=PTHREAD_COND_INITIALIZER;
 static int pending,busy,done,stop,duplicate,exit_code,term_signal,timed_out,spawn_error;
 static unsigned heartbeat;
+static int eject_live,detached,steal_child,ownership_lost,signal_attempts;
 static const char *fixture="normal";
 static char output[96];
 static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec/1e9;}
@@ -30,6 +31,12 @@ int sd_route_request_v1(void) {
     pthread_mutex_unlock(&lock);
     return 0;
 }
+/* Fault injection: a competing service reaper violates the broker contract. */
+static void *other_reaper(void *value) {
+    pid_t pid=*(pid_t *)value;int status;
+    pid_t got;do{got=waitpid(pid,&status,0);}while(got<0&&errno==EINTR);
+    return (void *)(intptr_t)got;
+}
 static void supervise(void) {
     int card=sr_card(1); if(card<0){spawn_error=101;return;}
     int exe=openat(card,"runner",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
@@ -42,7 +49,10 @@ static void supervise(void) {
     int err=posix_spawn_file_actions_adddup2(&actions,exe,4);
     err|=posix_spawn_file_actions_adddup2(&actions,pipes[1],1);
     err|=posix_spawn_file_actions_addclose(&actions,pipes[0]);
-    err|=posix_spawnattr_setflags(&attr,POSIX_SPAWN_SETPGROUP);
+    sigset_t empty,defaults;sigemptyset(&empty);sigfillset(&defaults);
+    err|=posix_spawnattr_setsigmask(&attr,&empty);
+    err|=posix_spawnattr_setsigdefault(&attr,&defaults);
+    err|=posix_spawnattr_setflags(&attr,POSIX_SPAWN_SETPGROUP|POSIX_SPAWN_SETSIGMASK|POSIX_SPAWN_SETSIGDEF);
     err|=posix_spawnattr_setpgroup(&attr,0);
     char choice[64];snprintf(choice,sizeof choice,"SD_ROUTE_FIXTURE=%s",fixture);
     char *env[]={choice,"PATH=/nonexistent",NULL};
@@ -52,25 +62,39 @@ static void supervise(void) {
     posix_spawn_file_actions_destroy(&actions);posix_spawnattr_destroy(&attr);
     if(err){spawn_error=err;goto close_fds;}
     close(exe);exe=-1;close(pipes[1]);pipes[1]=-1;
+    if(steal_child) {
+        pthread_t reaper;
+        void *reaped_pid=NULL;
+        if(pthread_create(&reaper,NULL,other_reaper,&pid)||pthread_join(reaper,&reaped_pid)
+           ||(pid_t)(intptr_t)reaped_pid!=pid)spawn_error=111;
+    }
     fcntl(pipes[0],F_SETFL,O_NONBLOCK);
     size_t used=0;int status=0,reaped=0;
     while(!reaped) {
         ssize_t n=read(pipes[0],output+used,sizeof output-1-used);if(n>0)used+=(size_t)n;
+        output[used]=0;
+        if(eject_live && !detached && strstr(output,"CONSTRAINED\n")) {
+            int card_fd=sr_card(1);
+            if(card_fd<0){spawn_error=108;break;}
+            close(card_fd);
+            if(umount2(SR_CARD,MNT_DETACH)){spawn_error=109;break;}
+            detached=1;
+        }
         pid_t got=waitpid(pid,&status,WNOHANG);
         if(got==pid){reaped=1;break;}
-        if(got<0 && errno!=EINTR){spawn_error=105;break;}
+        if(got<0 && errno!=EINTR){spawn_error=110;ownership_lost=1;break;}
         if(now()>=deadline){timed_out=1;break;}
         struct pollfd p={pipes[0],POLLIN,0};poll(&p,1,10);
     }
-    if(!reaped){
+    if(!reaped && !ownership_lost){
         /* PID cannot be reused while this owned child remains unreaped. */
-        kill(-pid,SIGKILL);kill(pid,SIGKILL);
+        signal_attempts+=2;kill(-pid,SIGKILL);kill(pid,SIGKILL);
         pid_t got;do{got=waitpid(pid,&status,0);}while(got<0&&errno==EINTR);
         if(got!=pid)spawn_error=106;else reaped=1;
     }
     ssize_t n=read(pipes[0],output+used,sizeof output-1-used);if(n>0)used+=(size_t)n;
     output[used]=0;
-    exit_code=WIFEXITED(status)?WEXITSTATUS(status):-1;
+    exit_code=!ownership_lost&&WIFEXITED(status)?WEXITSTATUS(status):-1;
     term_signal=WIFSIGNALED(status)?WTERMSIG(status):0;
     /* An exact second wait must find no child: no zombie, no unrelated reap. */
     if(reaped && !(waitpid(pid,&status,WNOHANG)==-1&&errno==ECHILD))spawn_error=107;
@@ -96,7 +120,7 @@ static int copy(const char *source,int dir,const char *target,mode_t mode) {
     if(in<0||out<0){if(in>=0)close(in);if(out>=0)close(out);return -1;}
     char data[4096];ssize_t n;int fail=0;
     while((n=read(in,data,sizeof data))>0)if(write(out,data,(size_t)n)!=n){fail=1;break;}
-    if(n<0)fail=1;close(in);close(out);return fail?-1:0;
+    if(n<0 || fchmod(out,mode))fail=1;close(in);close(out);return fail?-1:0;
 }
 static int prepare(const char *name) {
     if(mkdir(SR_ROOT,0700)&&errno!=EEXIST)return -1;
@@ -112,7 +136,10 @@ static int prepare(const char *name) {
     int ok=copy("/simulation/sd-route-runner",card,"runner",!strcmp(name,"exec_denied")?0600:0700);
     const char *selected="normal";
     if(!strcmp(name,"constructor_crash")||!strcmp(name,"run_crash")||!strcmp(name,"constructor_hang")||!strcmp(name,"run_hang"))selected=name;
+    if(!strcmp(name,"eject_live"))selected="constructor_hang";
     fixture=selected;
+    eject_live=!strcmp(name,"eject_live");detached=0;
+    steal_child=!strcmp(name,"ownership_lost");ownership_lost=0;signal_attempts=0;
     char source[160];snprintf(source,sizeof source,"/simulation/sd-route-%s.so",selected);
     if(strcmp(name,"missing_file")) {
         if(!strcmp(name,"symlink"))ok|=symlinkat(source,card,"plugin.so");
@@ -134,6 +161,8 @@ static int prepare(const char *name) {
     unsigned flags=MS_REMOUNT|MS_RDONLY|MS_NOSUID|MS_NODEV;
     if(!strcmp(name,"noexec"))flags|=MS_NOEXEC;
     if(mount(NULL,SR_CARD,NULL,flags,NULL))return -1;
+    int verified=sr_card(1);if(verified<0)return -1;close(verified);
+    if(!strcmp(name,"normal"))puts("SD_ROUTE_MOUNT fixture=tmpfs readonly=1 path=/tmp/sd-route/card");
     if(!strcmp(name,"ejected")&&umount(SR_CARD))return -1;
     return 0;
 }
@@ -162,14 +191,32 @@ static int one(const char *name) {
     int preload_ready=strstr(output,"PRELOAD_READY\n")!=NULL;
     int passed=returned<0.5 && ticks>0 && quiet;
     if(constrained)passed&=exec_ready&&preload_ready;
-    if(disabled)passed&=!done && !output[0];
-    else if(!strcmp(name,"normal"))passed&=!spawn_error && exit_code==0 && constrained && strstr(output,"HELLO\n")!=NULL;
-    else if(strstr(name,"crash"))passed&=!spawn_error&&term_signal==SIGSEGV&&constrained&&!timed_out;
-    else if(strstr(name,"hang"))passed&=!spawn_error&&term_signal==SIGKILL&&constrained&&timed_out;
-    else if(!strcmp(name,"exec_denied")||!strcmp(name,"noexec"))passed&=spawn_error==EACCES&&!constrained;
-    else passed&=(spawn_error||exit_code>=20)&&!constrained&&!timed_out;
+    if(disabled)passed&=!done && !output[0] && !exec_ready && !preload_ready;
+    else if(!strcmp(name,"normal"))passed&=!spawn_error && exit_code==0 && !term_signal && !timed_out
+        && exec_ready && preload_ready && constrained && strstr(output,"HELLO\n")!=NULL;
+    else if(!strcmp(name,"ownership_lost"))passed&=ownership_lost && spawn_error==110
+        && signal_attempts==0 && exec_ready && preload_ready && constrained;
+    else if(strstr(name,"crash"))passed&=!spawn_error && term_signal==SIGSEGV && exit_code==-1
+        && constrained && exec_ready && preload_ready && !timed_out && !signal_attempts;
+    else if(strstr(name,"hang")||!strcmp(name,"eject_live"))passed&=!spawn_error && term_signal==SIGKILL
+        && exit_code==-1 && constrained && exec_ready && preload_ready && timed_out && signal_attempts==2;
+    else if(!strcmp(name,"exec_denied")||!strcmp(name,"noexec"))passed&=spawn_error==EACCES
+        && exit_code==-1 && !exec_ready && !preload_ready && !constrained && !timed_out;
+    else if(!strcmp(name,"missing_card")||!strcmp(name,"ejected"))passed&=spawn_error==101
+        && exit_code==-1 && !exec_ready && !preload_ready && !constrained && !timed_out;
+    else {
+        int expected=!strcmp(name,"bad_version")?22:!strcmp(name,"bad_hash")?24:
+            (!strcmp(name,"missing_file")||!strcmp(name,"symlink")||!strcmp(name,"bad_elf")||!strcmp(name,"oversize"))?23:-1;
+        passed&=expected>0 && !spawn_error && exit_code==expected && !term_signal
+            && exec_ready && !preload_ready && !constrained && !timed_out;
+    }
     if(!strcmp(name,"constructor_hang"))passed&=duplicate==8;
-    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready);
+    if(eject_live)passed&=detached;
+    int load_error=0,input_mode=0;
+    char *load=strstr(output,"LOAD_ERROR="),*mode=strstr(output,"INPUT_MODE=");
+    if(load)sr_scan(load,"LOAD_ERROR=%d",&load_error);
+    if(mode)sr_scan(mode,"INPUT_MODE=%d",&input_mode);
+    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d detached=%d ownership_lost=%d signals=%d load_error=%d input_mode=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready,detached,ownership_lost,signal_attempts,load_error,input_mode);
     fflush(stdout);
     unlink(SR_ROOT "/enable");
     int card=sr_card(1);if(card>=0){close(card);if(umount(SR_CARD))return -1;}
@@ -201,7 +248,7 @@ static int run(void) {
     pthread_mutex_lock(&lock);int stale_rejected=!pending&&!busy&&!done;pthread_mutex_unlock(&lock);
     if(!stale_rejected)return 48;
     printf("SD_ROUTE_STALE rejected=1\n");
-    const char *cases[]={"disabled","normal","missing_card","missing_file","symlink","bad_version","bad_elf","bad_hash","oversize","exec_denied","noexec","ejected","constructor_crash","run_crash","constructor_hang","run_hang","normal","disabled"};
+    const char *cases[]={"disabled","normal","missing_card","missing_file","symlink","bad_version","bad_elf","bad_hash","oversize","exec_denied","noexec","ejected","constructor_crash","run_crash","constructor_hang","run_hang","eject_live","ownership_lost","normal","disabled"};
     int result=0;
     for(unsigned i=0;i<sizeof cases/sizeof cases[0];i++)if(one(cases[i])){result=42;break;}
     pthread_mutex_lock(&lock);stop=1;pthread_cond_broadcast(&wake);pthread_mutex_unlock(&lock);

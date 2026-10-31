@@ -24,6 +24,9 @@ static int run(void) {
     if(!sr_regular(input)||read(input,elf,sizeof elf)!=sizeof elf || memcmp(elf,"\177ELF\2\1\1",7)
         || elf[16]!=3 || elf[17]!=0 || elf[18]!=183 || elf[19]!=0)return 23;
     if(sr_hash(input,sr_hashes[index]))return 24;
+    struct stat verified;
+    if(__fxstat(0,input,&verified))return 24;
+    dprintf(1,"INPUT_MODE=%u\n",(unsigned)(verified.st_mode&0777));
     if(input!=3){if(dup2(input,3)!=3)return 25;close(input);}
     /* Close inherited service descriptors, including stdin/stderr and runner fd. */
     DIR *d=opendir("/proc/self/fd");if(!d)return 26;
@@ -51,7 +54,15 @@ static int run(void) {
     if(write(1,"PRELOAD_READY\n",14)!=14)return 33;
     void *library=dlopen("/proc/self/fd/3",RTLD_NOW|RTLD_LOCAL);
     close(3);
-    if(!library)return 31;
+    if(!library){
+        const char *error=dlerror();
+        int kind=error&&strstr(error,"Permission denied")?1:
+            error&&strstr(error,"map segment")?2:
+            error&&strstr(error,"undefined symbol")?3:
+            error&&strstr(error,"version")?4:5;
+        dprintf(1,"LOAD_ERROR=%d\n",kind);
+        return 31;
+    }
     int (*plugin)(void)=dlsym(library,"sd_plugin_v1");
     int result=plugin?plugin():32;
     dlclose(library);

@@ -37,6 +37,6 @@ void _init(void) {
 int sd_plugin_v1(void) {
     if(!ready)return 93;
     if(FIXTURE==2)raise(SIGSEGV);
-    if(FIXTURE==4)for(;;)pause();
+    if(FIXTURE==4)for(;;)__asm__ volatile("" ::: "memory");
     return write(1,"HELLO\n",6)==6?0:94;
 }

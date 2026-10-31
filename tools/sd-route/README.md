@@ -17,8 +17,14 @@ The resident worker validates the simulated card and exact runner hash, then
 uses `posix_spawn` to exec the verified runner through its open file descriptor.
 There is no project-written post-fork child path with allocator/dlopen calls.
 The broker does not alter SIGCHLD and waits only for the PID it created. Its
-owned process group is terminated on a two-second monotonic wall deadline;
-the child is reaped before accepting another request. It uses a kernel flock lease to reject concurrent host instances; a leftover
+owned process group is terminated on a two-second monotonic wall deadline
+checked after posix_spawn returns; spawn/exec itself is not hard-bounded by this
+in-process watchdog. A blocked spawn cannot block the entry caller, but would
+leave the worker busy. External supervision would be needed to bound that case;
+the child is reaped before accepting another request. The resident host must
+grant the broker exclusive reaping ownership. ECHILD/ownership loss stops all
+numeric-PID signalling; a competing-reaper fixture verifies that path. This
+contract has not been established in the original Sony service. It uses a kernel flock lease to reject concurrent host instances; a leftover
 lock file carries no PID or request. Startup invalidates any old enable marker.
 It does not use PID files or waitpid(-1). The original service/host branch never calls exit from the entry.
 The synthetic host's `_start` exits only when its complete test program ends.
@@ -57,7 +63,10 @@ NEEDED libraries and symbol versions of our binaries are exported in the build
 receipt. The dependency bytes are the pinned original guest runtime, not SD
 search paths; the exec environment does not carry LD_PRELOAD/LD_LIBRARY_PATH.
 
-Missing/ejected cards fail closed. The noexec and executable-permission tests
+Missing cards and pre-launch unmounts fail closed. A separate live-removal
+fixture detaches only this mount after the plugin constructor reports its
+restrictions, then requires the same wall timeout and reaping. This models mount
+disappearance with held references, not real SD electrical/IO failure. The noexec and executable-permission tests
 must fail without a remount or built-in executable fallback. Successful cleanup
 unmounts the disposable fixture and removes its enable marker. Nothing is
 registered for boot or service startup. A new VM does not consume a stale request.
