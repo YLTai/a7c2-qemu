@@ -7,6 +7,7 @@
 #include <grp.h>
 static int limit(int kind,rlim_t n){struct rlimit r={n,n};return setrlimit(kind,&r);}
 static int run(void) {
+    if(write(1,"EXEC_READY\n",11)!=11)return 19;
     const char *name=getenv("SD_ROUTE_FIXTURE");
     unsigned index=0;
     for(;index<5;index++)if(name && !strcmp(name,sr_names[index]))break;
@@ -41,6 +42,7 @@ static int run(void) {
     if(syscall(SYS_capset,&h,c)||syscall(SYS_capget,&h,c)||c[0].effective||c[1].effective
        ||c[0].permitted||c[1].permitted||c[0].inheritable||c[1].inheritable
        ||getuid()!=65534||geteuid()!=65534||prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0))return 30;
+    if(write(1,"PRELOAD_READY\n",14)!=14)return 33;
     void *library=dlopen("/proc/self/fd/3",RTLD_NOW|RTLD_LOCAL);
     close(3);
     if(!library)return 31;

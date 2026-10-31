@@ -89,11 +89,11 @@ try:
     start();phase='baseline';result['ui_before']=ui('before')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('stale_request')
     phase='native_suite';text=command('sd_suite')
-    pattern=r'SD_ROUTE case=([a-z_]+) passed=(\d) entry_ms=(\d+) ticks=(\d+) exit=(-?\d+) signal=(\d+) timeout=(\d) spawn_error=(\d+) duplicates=(\d+) constrained=(\d) reaped=(\d)'
-    names=['case','passed','entry_ms','ticks','exit','signal','timeout','spawn_error','duplicates','constrained','reaped']
+    pattern=r'SD_ROUTE case=([a-z_]+) passed=(\d) entry_ms=(\d+) ticks=(\d+) exit=(-?\d+) signal=(\d+) timeout=(\d) spawn_error=(\d+) duplicates=(\d+) constrained=(\d) reaped=(\d) exec_ready=(\d) preload_ready=(\d)'
+    names=['case','passed','entry_ms','ticks','exit','signal','timeout','spawn_error','duplicates','constrained','reaped','exec_ready','preload_ready']
     result['cases']=[dict(zip(names,[r[0]]+list(map(int,r[1:])))) for r in re.findall(pattern,text)]
     result['suite_return_codes']=[int(v) for v in re.findall(r'SD_ROUTE_RC=(\d+)',text)]
-    if len(result['cases'])!=17 or not all(r['passed'] for r in result['cases']) or 'SD_ROUTE_SUITE passed=1' not in text or 'SD_ROUTE_RC=0' not in text:raise RuntimeError('native_suite_failed')
+    if len(result['cases'])!=18 or not all(r['passed'] for r in result['cases']) or 'SD_ROUTE_SUITE passed=1' not in text or 'SD_ROUTE_RC=0' not in text:raise RuntimeError('native_suite_failed')
     phase='post_fault_ui';result['ui_after']=ui('after')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('residue')
     close();phase='new_vm';start()
@@ -104,6 +104,17 @@ except Exception as exc:
     result.update(failed_phase=phase,error_type=type(exc).__name__)
     allowed={'guest_unhealthy','guest_wait','expected_original_language_screen','original_ui_no_change','original_ui_not_restored','native_suite_failed','stale_request','residue','new_vm_residue','persistent_settings','overlay_off'}
     result['reason']=str(exc) if str(exc) in allowed else 'other'
+    if vm:
+        state=vm.status()
+        log=Path(state['log']) if state.get('log') else None
+        private=log.read_text(errors='replace') if log and log.is_file() else ''
+        result['diagnostics']={
+            'undefined_symbols':re.findall(r'undefined symbol: ([A-Za-z_][A-Za-z_0-9]*)',private)[-12:],
+            'own_source_errors':re.findall(r'(sd-route-[a-z.-]+:[0-9:]+: (?:fatal )?error: [^\r\n]{0,160})',private)[-8:],
+            'missing_paths':[Path(p).name for p in re.findall(r"No such file or directory: '([^']+)'",private)[-8:]],
+            'error_types':re.findall(r'(?m)^(\w+(?:Error|Exception)): ',private)[-8:],
+            'log_sha256':hashlib.sha256(private.encode()).hexdigest()}
+
 finally:
     try:close()
     except Exception as exc:result.update(passed=False,close_error=type(exc).__name__)

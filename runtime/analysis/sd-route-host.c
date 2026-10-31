@@ -121,6 +121,10 @@ static int prepare(const char *name) {
         int f=openat(card,"plugin.so",O_WRONLY|O_NOFOLLOW|O_CLOEXEC);
         if(f<0)ok=-1;else{if(lseek(f,!strcmp(name,"bad_elf")?0:256,SEEK_SET)<0||write(f,"BAD",3)!=3)ok=-1;close(f);}
     }
+    if(!strcmp(name,"oversize")) {
+        int f=openat(card,"plugin.so",O_WRONLY|O_NOFOLLOW|O_CLOEXEC);
+        if(f<0)ok=-1;else{if(ftruncate(f,1024*1024+1))ok=-1;close(f);}
+    }
     close(card);
     if(ok)return -1;
     unsigned flags=MS_REMOUNT|MS_RDONLY|MS_NOSUID|MS_NODEV;
@@ -150,7 +154,10 @@ static int one(const char *name) {
     usleep(10000);
     pthread_mutex_lock(&lock);unsigned ticks=heartbeat-before;int quiet=!busy&&!pending;pthread_mutex_unlock(&lock);
     int constrained=strstr(output,"CONSTRAINED\n")!=NULL;
+    int exec_ready=strstr(output,"EXEC_READY\n")!=NULL;
+    int preload_ready=strstr(output,"PRELOAD_READY\n")!=NULL;
     int passed=returned<0.5 && ticks>0 && quiet;
+    if(constrained)passed&=exec_ready&&preload_ready;
     if(disabled)passed&=!done && !output[0];
     else if(!strcmp(name,"normal"))passed&=!spawn_error && exit_code==0 && constrained && strstr(output,"HELLO\n")!=NULL;
     else if(strstr(name,"crash"))passed&=!spawn_error&&term_signal==SIGSEGV&&constrained&&!timed_out;
@@ -158,7 +165,7 @@ static int one(const char *name) {
     else if(!strcmp(name,"exec_denied")||!strcmp(name,"noexec"))passed&=spawn_error==EACCES&&!constrained;
     else passed&=(spawn_error||exit_code>=20)&&!constrained&&!timed_out;
     if(!strcmp(name,"constructor_hang"))passed&=duplicate==8;
-    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled);
+    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready);
     fflush(stdout);
     unlink(SR_ROOT "/enable");
     int card=sr_card();if(card>=0){close(card);if(umount(SR_CARD))return -1;}
@@ -171,7 +178,7 @@ static int run(void) {
     int sockets[2];
     if(directory<0||device<0||dup2(device,200)!=200||socketpair(AF_UNIX,SOCK_STREAM,0,sockets))return 40;
     pthread_t a,b;if(pthread_create(&a,NULL,pulse,NULL)||pthread_create(&b,NULL,worker,NULL))return 41;
-    const char *cases[]={"disabled","normal","missing_card","missing_file","symlink","bad_version","bad_elf","bad_hash","exec_denied","noexec","ejected","constructor_crash","run_crash","constructor_hang","run_hang","normal","disabled"};
+    const char *cases[]={"disabled","normal","missing_card","missing_file","symlink","bad_version","bad_elf","bad_hash","oversize","exec_denied","noexec","ejected","constructor_crash","run_crash","constructor_hang","run_hang","normal","disabled"};
     int result=0;
     for(unsigned i=0;i<sizeof cases/sizeof cases[0];i++)if(one(cases[i])){result=42;break;}
     pthread_mutex_lock(&lock);stop=1;pthread_cond_broadcast(&wake);pthread_mutex_unlock(&lock);
