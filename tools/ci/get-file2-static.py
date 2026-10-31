@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Bounded private-data analysis for GET_FILE2. No firmware execution or USB.
+
+Exports semantic load/compare/call facts, never bytes or disassembly listings.
+Linear provenance is explicitly a candidate, not a path-complete proof.
+"""
+import hashlib
+import json
+from pathlib import Path
+import re
+import struct
+import subprocess
+
+ROOT = Path('runtime/analysis')
+FUNCTIONS = ('adj_cmd_set_file_path', 'get_access_filename', 'adj_cmd_get_file2',
+             '_ZN10libJiritsu11CFileAccess4statEPKcP13tag_FILE_INFO',
+             '_ZN10libJiritsu11CFileAccess4readEPvm')
+
+
+def run(arguments):
+    r = subprocess.run(arguments, capture_output=True, text=True, timeout=90)
+    if r.returncode:
+        raise ValueError('tool_failed')
+    return r.stdout
+
+
+def reg(name):
+    return 'x' + name[1:] if name.startswith('w') else name
+
+
+def short(value):
+    return value if len(value) <= 120 else 'complex_unknown'
+
+
+def trace(lines, start, end):
+    state = {f'x{i}': f'argument{i}' for i in range(8)} | {'sp': 'frame'}
+    memory = {}
+    facts = []
+    comparison = None
+    for address, operation, operands in lines:
+        if not start <= address < end:
+            continue
+        get = lambda name: state.get(reg(name), 'unknown')
+        value = None
+        destination = re.match(r'([wx]\d+|sp)\b', operands)
+        pair = re.match(r'([wx]\d+|sp),\s*([wx]\d+|sp)$', operands)
+        immediate = re.match(r'([wx]\d+|sp),\s*#(-?0x[0-9a-f]+|-?\d+)', operands)
+        arithmetic = re.match(r'([wx]\d+|sp),\s*([wx]\d+|sp),\s*#(-?0x[0-9a-f]+|-?\d+)', operands)
+        access = re.match(r'([wx]\d+),\s*\[(x\d+|sp)(?:,\s*#(-?0x[0-9a-f]+|-?\d+))?\]', operands)
+        if operation == 'mov' and pair:
+            value = get(pair[2])
+        elif operation in ('mov', 'movz') and immediate:
+            value = 'constant:' + str(int(immediate[2], 0))
+        elif operation in ('add', 'sub') and arithmetic:
+            offset = int(arithmetic[3], 0) * (1 if operation == 'add' else -1)
+            value = short(f'offset({get(arithmetic[2])},{offset})')
+        elif operation in ('ldrb', 'ldrh', 'ldr', 'ldrsw') and access:
+            offset = int(access[3] or '0', 0)
+            location = short(f'offset({get(access[2])},{offset})')
+            width = 8 if operation == 'ldrb' else 16 if operation == 'ldrh' else 32 if access[1][0] == 'w' or operation == 'ldrsw' else 64
+            value = memory.get(location, short(f'load{width}({location})'))
+            facts.append({'at': address, 'kind': 'load', 'bits': width,
+                          'base_candidate': get(access[2]), 'offset': offset,
+                          'destination': reg(access[1])})
+        elif operation in ('str', 'strb', 'strh') and access:
+            location = short(f'offset({get(access[2])},{int(access[3] or "0", 0)})')
+            memory[location] = get(access[1])
+            facts.append({'at': address, 'kind': 'store', 'destination_candidate': location,
+                          'value_candidate': get(access[1])})
+        if operation in ('cmp', 'tst'):
+            if pair:
+                comparison = {'at': address, 'lhs_candidate': get(pair[1]),
+                              'rhs_candidate': get(pair[2]), 'test': operation}
+            elif immediate:
+                comparison = {'at': address, 'lhs_candidate': get(immediate[1]),
+                              'constant': int(immediate[2], 0), 'test': operation}
+            else:
+                comparison = None
+        if operation.startswith('b.'):
+            target = re.match(r'([0-9a-f]+)', operands)
+            if target:
+                facts.append({'at': address, 'kind': 'conditional', 'condition': operation[2:],
+                              'target': int(target[1], 16), 'comparison': comparison})
+            comparison = None
+        elif operation in ('cbz', 'cbnz', 'tbz', 'tbnz'):
+            check = re.match(r'([wx]\d+),\s*(?:#(\d+),\s*)?([0-9a-f]+)', operands)
+            if check:
+                facts.append({'at': address, 'kind': 'conditional', 'condition': operation,
+                              'value_candidate': get(check[1]), 'bit': check[2],
+                              'target': int(check[3], 16)})
+        elif operation in ('bl', 'b'):
+            target = re.match(r'([0-9a-f]+) <([^>]+)>', operands)
+            if target:
+                args = {f'x{i}': get(f'x{i}') for i in range(5)}
+                facts.append({'at': address, 'kind': 'call' if operation == 'bl' else 'jump',
+                              'target': int(target[1], 16), 'symbol': target[2],
+                              'arguments_candidate': args if operation == 'bl' else {}})
+        if value is not None and destination:
+            state[reg(destination[1])] = value
+        elif destination and operation not in ('str', 'strb', 'strh', 'stp', 'cmp', 'tst', 'cbz', 'cbnz', 'tbz', 'tbnz'):
+            state.pop(reg(destination[1]), None)
+        if operation in ('bl', 'blr'):
+            state = {k: v for k, v in state.items() if k == 'sp' or k.startswith('x') and 19 <= int(k[1:]) <= 29}
+            state['x0'] = 'call_result_at:' + hex(address)
+            memory.clear()
+            comparison = None
+    return facts
+
+
+def inspect(path, data):
+    symbols = []
+    table = {}
+    for line in run(['aarch64-linux-gnu-readelf', '-Ws', str(path)]).splitlines():
+        p = line.split()
+        if len(p) < 8:
+            continue
+        if p[3] == 'FUNC':
+            entry = {'name': p[7], 'va': int(p[1], 16), 'size': int(p[2], 0), 'undefined': p[6] == 'UND'}
+            if entry not in symbols:
+                symbols.append(entry)
+            if not entry['undefined']:
+                table[p[7]] = entry
+    listing = run(['aarch64-linux-gnu-objdump', '-d', str(path)])
+    instructions = []
+    for line in listing.splitlines():
+        m = re.match(r'^\s*([0-9a-f]+):\s+[0-9a-f]{8}\s+([\w.]+)\s*(.*)', line)
+        if m:
+            instructions.append((int(m[1], 16), m[2], m[3]))
+    output = {'path': str(path.relative_to(ROOT)), 'sha256': hashlib.sha256(data).hexdigest(),
+              'function_facts': [], 'relevant_symbols': [], 'table_references': []}
+    for name in FUNCTIONS:
+        if name not in table:
+            continue
+        s = table[name]
+        facts = trace(instructions, s['va'], s['va'] + s['size'])
+        if len(facts) > 220:
+            raise ValueError('function_fact_limit')
+        output['function_facts'].append(s | {'facts': facts, 'linear_candidates_only': True})
+    if path.name != 'libJiritsu.so':
+        output['relevant_symbols'] = [s for s in symbols if re.search(r'Jiritsu|jiritsu|[Ff]ile|[Aa]djust|[Ss]enser', s['name'])][:100]
+    # Resolve only relocations referencing the two reviewed handlers. Values
+    # around those records are typed metadata, not exported binary windows.
+    phoff = struct.unpack_from('<Q', data, 32)[0]
+    phsize, phnum = struct.unpack_from('<HH', data, 54)
+    segments = [struct.unpack_from('<II6Q', data, phoff + i * phsize) for i in range(phnum)]
+    def file_offset(va):
+        return next((s[2] + va - s[3] for s in segments if s[0] == 1 and s[3] <= va < s[3] + s[5]), None)
+    wanted = ('adj_cmd_get_file2', 'adj_cmd_set_file_path')
+    for line in run(['aarch64-linux-gnu-readelf', '-rW', str(path)]).splitlines():
+        if not any(name in line for name in wanted):
+            continue
+        p = line.split()
+        va = int(p[0], 16)
+        offset = file_offset(va)
+        if offset is None or offset < 16 or offset + 24 > len(data):
+            raise ValueError('relocation_mapping')
+        fields = []
+        for delta in (-16, -12, -8, -4, 8, 12, 16):
+            value = struct.unpack_from('<I', data, offset + delta)[0]
+            if value <= 65535:
+                fields.append({'relative_offset': delta, 'integer': value})
+        output['table_references'].append({'relocation_va': va,
+            'handler': next(n for n in wanted if n in line), 'small_integer_candidates': fields})
+    return output
+
+
+def main():
+    manifest = json.loads((ROOT / 'sony-assets.json').read_text())
+    report = {'schema': 'get-file2-static/1', 'usb_access': False, 'firmware_executed': False,
+              'complete_wire_mapping': False, 'files': []}
+    for name in ('libJiritsu.so', 'libsencore.so', 'libusbcmd.so'):
+        relative = 'menu-root/usr/lib/' + name
+        path = ROOT / relative
+        if path.is_symlink():
+            raise ValueError('symlink_input')
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != manifest[relative]['sha256']:
+            raise ValueError('identity_mismatch')
+        report['files'].append(inspect(path, data))
+    encoded = json.dumps(report, separators=(',', ':'))
+    if len(encoded) > 180000:
+        raise ValueError('report_limit')
+    Path('ci-logs/get-file2-static.json').write_text(encoded + '\n')
+    print('GET_FILE2_STATIC_METADATA_WRITTEN; no live requests')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as exc:
+        allowed = {'tool_failed', 'function_fact_limit', 'relocation_mapping',
+                   'symlink_input', 'identity_mismatch', 'report_limit'}
+        code = str(exc) if str(exc) in allowed else type(exc).__name__
+        print('GET_FILE2_STATIC_FAILED category=' + code)
+        raise SystemExit(1)
