@@ -61,6 +61,28 @@ static int fixture_prepare(void) {
     }
     return 0;
 }
+/* The handler creates this file after dropping to 65534. Keep the SD route's
+ * root-owned checks unchanged; compare against the already hash-pinned input. */
+static int fixture_written_file(int fd) {
+    struct stat before, after;
+    if (fd < 0 || __fxstat(0, fd, &before) || !S_ISREG(before.st_mode) ||
+        before.st_uid != 65534 || before.st_gid != 65534 || before.st_nlink != 1 ||
+        (before.st_mode & 022) || !(before.st_mode & 0400) ||
+        before.st_size != (off_t)fixture_length) return 0;
+    unsigned char block[4096]; size_t offset = 0;
+    while (offset < fixture_length) {
+        size_t count = fixture_length - offset;
+        if (count > sizeof(block)) count = sizeof(block);
+        ssize_t got = read(fd, block, count);
+        if (got <= 0 || memcmp(block, fixture_data + 3 + offset, (size_t)got)) return 0;
+        offset += (size_t)got;
+    }
+    char extra;
+    if (read(fd, &extra, 1) != 0 || __fxstat(0, fd, &after)) return 0;
+    return before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
+        before.st_size == after.st_size && before.st_mode == after.st_mode &&
+        before.st_uid == after.st_uid && before.st_gid == after.st_gid && after.st_nlink == 1;
+}
 static int fixture_handler(void *handle) {
     void (*handler)(void *, void *, void *) = dlsym(handle, "adj_cmd_set_file2");
     if (!handler) return 56;
@@ -74,7 +96,7 @@ static int fixture_handler(void *handle) {
     handler(packet, &fixture_dmm, &output_length);
     fixture_enabled = 0;
     int fd = open("/tmp/jiritsu/libJit.so", O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
-    int matches = fd >= 0 && sr_hash(fd, JIRITSU_RETURN_HASH) == 0;
+    int matches = fixture_written_file(fd);
     if (fd >= 0) close(fd);
     printf("JIRITSU_PROBE original_set_handler=1 file_hash=%d mount_stubs=%u dmm_stubs=%u log_stubs=%u dlclose_calls=%u dlclose_result=%d\n",
            matches, fixture_mounts, fixture_allocs, fixture_logs, fixture_closes, fixture_close_result);

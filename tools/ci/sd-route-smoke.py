@@ -98,13 +98,25 @@ try:
     start();phase='baseline';result['original_hashes_before']=originals();result['ui_before']=ui('before')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('stale_request')
     phase='original_library_probe';probe=command('jiritsu_load')
+    sections=re.split(r'JIRITSU_PROBE binding=([a-z]+)\r?\n',probe)
+    binding=dict(zip(sections[1::2],sections[2::2]))
+    handler=binding.get('handler','')
+    verified=(len(binding)==3 and
+        'restricted=1 uid=65534' in handler and
+        handler.count('JIRITSU_RETURN=1')==1 and
+        'original_set_handler=1 file_hash=1 mount_stubs=1 dmm_stubs=1' in handler and
+        'dlclose_calls=1 dlclose_result=0' in handler and
+        'loaded=1 set_export=1 get_export=1 handlers_called=1' in handler and
+        'child_exit=0 signal=0 reaped=1 sony_usb=0' in handler and
+        'JIRITSU_PROBE_RC=0' in probe)
     result['jiritsu_loader_probe']={
         'records':re.findall(r'(?m)^JIRITSU_PROBE ([A-Za-z0-9_= -]+)\r?$',probe),
         'completed':'JIRITSU_PROBE_RC=0' in probe,
-        'original_set_handler_returned':'original_set_handler=1' in probe,
-        'own_constructor_receipt':'JIRITSU_RETURN=1' in probe,
-        'original_filename_helper_matched':'original_filename_helper=1 matched=1' in probe,'sony_usb_verified':False}
-    if not result['jiritsu_loader_probe']['completed']:raise RuntimeError('original_probe_incomplete')
+        'original_handler_verified':verified,
+        'own_constructor_receipt':handler.count('JIRITSU_RETURN=1')==1,
+        'sony_usb_verified':False,'service_stubs':['mount','dmm_buffer','logs'],
+        'dlclose_observer':'passes through to original libdl'}
+    if not verified:raise RuntimeError('original_handler_not_verified')
     phase='native_suite';text=command('sd_suite')
     result['mount_verified']=bool(re.search(r'SD_ROUTE_MOUNT fixture=tmpfs readonly=1 path=/tmp/sd-route/card',text))
     result['stale_session_rejected']='SD_ROUTE_STALE rejected=1' in text
@@ -122,7 +134,7 @@ try:
     result['passed']=True
 except Exception as exc:
     result.update(failed_phase=phase,error_type=type(exc).__name__)
-    allowed={'guest_unhealthy','guest_wait','expected_original_language_screen','original_ui_no_change','original_ui_not_restored','native_suite_failed','stale_request','residue','new_vm_residue','persistent_settings','overlay_off','original_hash_changed'}
+    allowed={'guest_unhealthy','guest_wait','expected_original_language_screen','original_ui_no_change','original_ui_not_restored','native_suite_failed','stale_request','residue','new_vm_residue','persistent_settings','overlay_off','original_hash_changed','original_handler_not_verified'}
     result['reason']=str(exc) if str(exc) in allowed else 'other'
     if vm:
         state=vm.status()
@@ -130,7 +142,7 @@ except Exception as exc:
         private=log.read_text(errors='replace') if log and log.is_file() else ''
         result['diagnostics']={
             'undefined_symbols':re.findall(r'undefined symbol: ([A-Za-z_][A-Za-z_0-9]*)',private)[-12:],
-            'own_source_errors':re.findall(r'(sd-route-[a-z.-]+:[0-9:]+: (?:fatal )?error: [^\r\n]{0,160})',private)[-8:],
+            'own_source_errors':re.findall(r'((?:sd-route|jiritsu)-[a-z.-]+:[0-9:]+: (?:fatal )?error: [^\r\n]{0,160})',private)[-8:],
             'missing_paths':[Path(p).name for p in re.findall(r"No such file or directory: '([^']+)'",private)[-8:]],
             'error_types':re.findall(r'(?m)^(\w+(?:Error|Exception)): ',private)[-8:],
             'log_sha256':hashlib.sha256(private.encode()).hexdigest()}
