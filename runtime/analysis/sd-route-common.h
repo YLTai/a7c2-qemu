@@ -15,6 +15,7 @@
 #include <string.h>
 #include <errno.h>
 #include "fl23-sha256.h"
+extern int sr_scan(const char *,const char *,...) __asm__("__isoc99_sscanf");
 extern int __fxstat(int,int,struct stat *);
 extern int __lxstat(int,const char *,struct stat *);
 #define SR_ROOT "/tmp/sd-route"
@@ -45,8 +46,8 @@ static int sr_card(int readonly) {
     char line[2048], point[256], type[32], options[128]; int found=0;
     while(fgets(line,sizeof line,f)) {
         char *tail=strstr(line," - ");
-        if(tail && sscanf(line,"%*u %*u %*s %*s %255s %127s",point,options)==2
-            && sscanf(tail," - %31s",type)==1 && !strcmp(point,SR_CARD))
+        if(tail && sr_scan(line,"%*u %*u %*s %*s %255s %127s",point,options)==2
+            && sr_scan(tail," - %31s",type)==1 && !strcmp(point,SR_CARD))
             found=!strcmp(type,"tmpfs") && (!readonly || !strcmp(options,"ro") || !strncmp(options,"ro,",3));
     }
     fclose(f);

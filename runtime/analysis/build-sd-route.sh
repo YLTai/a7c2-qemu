@@ -5,7 +5,7 @@ src=$1
 out=$2
 lib=$3
 work=$4
-common=(--target=aarch64-linux-gnu -fuse-ld=lld -nostdlib -O2 -mno-outline-atomics
+common=(--target=aarch64-linux-gnu -fuse-ld=lld -nostdlib -std=gnu11 -O2 -mno-outline-atomics
         -isystem /usr/aarch64-linux-gnu/include -I"$src" -I"$work")
 libraries=("$lib/libc-2.25.so" "$lib/libdl-2.25.so" "$lib/libpthread-2.25.so" "$lib/ld-2.25.so")
 names=(normal constructor_crash run_crash constructor_hang run_hang)

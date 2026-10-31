@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <dirent.h>
 #include <grp.h>
+#include <limits.h>
 static int limit(int kind,rlim_t n){struct rlimit r={n,n};return setrlimit(kind,&r);}
 static int run(void) {
     if(write(1,"EXEC_READY\n",11)!=11)return 19;
@@ -28,7 +29,12 @@ static int run(void) {
     DIR *d=opendir("/proc/self/fd");if(!d)return 26;
     int own=dirfd(d); struct dirent *e;
     while((e=readdir(d))) {
-        char *end; long fd=strtol(e->d_name,&end,10);
+        const char *end=e->d_name;unsigned fd=0;
+        for(;*end>='0'&&*end<='9';end++) {
+            unsigned digit=(unsigned)(*end-'0');
+            if(fd>((unsigned)INT_MAX-digit)/10)break;
+            fd=fd*10+digit;
+        }
         if(*e->d_name && !*end && fd!=1 && fd!=3 && fd!=own)close((int)fd);
     }
     closedir(d);
