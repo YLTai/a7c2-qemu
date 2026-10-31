@@ -30,7 +30,7 @@ int sd_route_request_v1(void) {
     return 0;
 }
 static void supervise(void) {
-    int card=sr_card(); if(card<0){spawn_error=101;return;}
+    int card=sr_card(1); if(card<0){spawn_error=101;return;}
     int exe=openat(card,"runner",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     close(card);
     if(sr_hash(exe,SR_RUNNER_HASH)){if(exe>=0)close(exe);spawn_error=102;return;}
@@ -104,7 +104,7 @@ static int prepare(const char *name) {
     unlink(SR_ROOT "/enable");
     if(!strcmp(name,"missing_card"))return 0;
     if(mount("sd-route-fixture",SR_CARD,"tmpfs",MS_NOSUID|MS_NODEV,"size=4m,mode=0700"))return -1;
-    int card=sr_card();if(card<0)return -1;
+    int card=sr_card(0);if(card<0)return -1;
     int ok=copy("/simulation/sd-route-runner",card,"runner",!strcmp(name,"exec_denied")?0600:0700);
     const char *selected="normal";
     if(!strcmp(name,"constructor_crash")||!strcmp(name,"run_crash")||!strcmp(name,"constructor_hang")||!strcmp(name,"run_hang"))selected=name;
@@ -135,12 +135,12 @@ static int prepare(const char *name) {
 }
 static int one(const char *name) {
     int disabled=!strcmp(name,"disabled");
-    if(prepare(name))return -1;
+    if(prepare(name)){printf("SD_ROUTE_FAILURE stage=prepare errno=%d case=%s\n",errno,name);return -1;}
     if(!disabled){int fd=open(SR_ROOT "/enable",O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600);if(fd<0)return -1;int ok=write(fd,"1",1)==1;close(fd);if(!ok)return -1;}
     pthread_mutex_lock(&lock);done=0;duplicate=0;exit_code=-1;term_signal=timed_out=spawn_error=0;output[0]=0;unsigned before=heartbeat;pthread_mutex_unlock(&lock);
     double started=now();
     void *entry=dlopen("/simulation/sd-route-entry.so",RTLD_NOW|RTLD_LOCAL);
-    if(!entry)return -1;
+    if(!entry){printf("SD_ROUTE_FAILURE stage=entry errno=%d case=%s\n",errno,name);return -1;}
     dlclose(entry);
     double returned=now()-started;
     if(!disabled){
@@ -168,7 +168,7 @@ static int one(const char *name) {
     printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready);
     fflush(stdout);
     unlink(SR_ROOT "/enable");
-    int card=sr_card();if(card>=0){close(card);if(umount(SR_CARD))return -1;}
+    int card=sr_card(1);if(card>=0){close(card);if(umount(SR_CARD))return -1;}
     return passed?0:-1;
 }
 static int run(void) {

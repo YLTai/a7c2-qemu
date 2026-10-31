@@ -12,7 +12,7 @@ static int run(void) {
     unsigned index=0;
     for(;index<5;index++)if(name && !strcmp(name,sr_names[index]))break;
     if(index==5)return 20;
-    int card=sr_card(); if(card<0)return 21;
+    int card=sr_card(1); if(card<0)return 21;
     int meta=openat(card,"plugin.meta",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     char version[9]; ssize_t count=meta<0?-1:read(meta,version,sizeof version);
     if(meta>=0)close(meta);
