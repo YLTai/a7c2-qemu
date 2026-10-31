@@ -18,6 +18,7 @@ FUNCTIONS = ('adj_cmd_set_file_path', 'get_access_filename', 'adj_cmd_get_file2'
              '_ZN10libJiritsu11CFileAccess4statEPKcP13tag_FILE_INFO',
              '_ZN10libJiritsu11CFileAccess4readEPvm',
              '_Z17AdjustControlFuncPK12SenserPacket',
+             '_ZN29SubsystemCommunicationCommand16TransactionStartEPK12SenserPacketPKvS4_',
              '_ZN24HostCommunicationCommand9DoExecuteEP12SenserPacket',
              '_ZN24HostCommunicationCommandC1EPK12SenserPacketRK15CommandCodeType')
 
@@ -65,6 +66,8 @@ def trace(lines, start, end):
         access = re.match(r'([wx]\d+),\s*\[(x\d+|sp)(?:,\s*#(-?0x[0-9a-f]+|-?\d+))?\]', operands)
         if operation == 'mov' and pair:
             value = get(pair[2])
+        elif operation in ('uxtw', 'sxtw') and pair:
+            value = short(f'{operation}({get(pair[2])})')
         elif operation in ('mov', 'movz') and immediate:
             value = 'constant:' + str(int(immediate[2], 0))
         elif operation in ('add', 'sub') and arithmetic:
@@ -86,6 +89,9 @@ def trace(lines, start, end):
             memory[location] = get(access[1])
             facts.append({'at': address, 'kind': 'store', 'destination_candidate': location,
                           'value_candidate': get(access[1])})
+        if value is not None and destination and operation not in ('ldrb', 'ldrh', 'ldr', 'ldrsw'):
+            facts.append({'at': address, 'kind': 'assignment', 'destination': reg(destination[1]),
+                          'value_candidate': value})
         if operation in ('cmp', 'tst'):
             if pair:
                 comparison = {'at': address, 'lhs_candidate': get(pair[1]),
@@ -183,14 +189,24 @@ def inspect(path, data):
     if path.name == 'libJiritsu.so':
         next_start = min(s['va'] for s in symbols if s['va'] > 0xb61c and not s['undefined'])
         table['registered_callback_0xb61c'] = {'name': 'registered_callback_0xb61c', 'va': 0xb61c, 'size': next_start - 0xb61c, 'undefined': False}
-    for name in (*FUNCTIONS, 'registered_callback_0xb61c'):
+        table['stat_thunk_0x122f0'] = {'name': 'stat_thunk_0x122f0', 'va': 0x122f0, 'size': 16, 'undefined': False}
+    for name in (*FUNCTIONS, 'registered_callback_0xb61c', 'stat_thunk_0x122f0'):
         if name not in table:
             continue
         s = table[name]
         facts = trace(instructions, s['va'], s['va'] + s['size'])
-        if len(facts) > 220:
+        if len(facts) > 420:
             raise ValueError('function_fact_limit')
-        output['function_facts'].append(s | {'facts': facts, 'cfg_candidates_only': True})
+        direct_edges = []
+        if name == 'registered_callback_0xb61c':
+            for address, operation, operands in instructions:
+                if s['va'] <= address < s['va'] + s['size'] and operation in ('b', 'bl'):
+                    target = re.match(r'([0-9a-f]+) <([^>]+)>', operands)
+                    if target:
+                        direct_edges.append({'at': address, 'target': int(target[1], 16),
+                                             'symbol': target[2], 'selector_unresolved': True})
+        output['function_facts'].append(s | {'facts': facts, 'cfg_candidates_only': True,
+                                           'unresolved_switch_edges': direct_edges})
     if path.name != 'libJiritsu.so':
         output['relevant_symbols'] = [s for s in symbols if re.search(r'Jiritsu|jiritsu|[Ff]ile|[Aa]djust|[Ss]enser', s['name'])][:100]
     # Resolve only relocations referencing the two reviewed handlers. Values
