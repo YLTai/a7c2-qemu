@@ -18,8 +18,9 @@ uses `posix_spawn` to exec the verified runner through its open file descriptor.
 There is no project-written post-fork child path with allocator/dlopen calls.
 The broker does not alter SIGCHLD and waits only for the PID it created. Its
 owned process group is terminated on a two-second monotonic wall deadline;
-the child is reaped before accepting another request. It does not use PID files
-or waitpid(-1). The original service/host branch never calls exit from the entry.
+the child is reaped before accepting another request. It uses a kernel flock lease to reject concurrent host instances; a leftover
+lock file carries no PID or request. Startup invalidates any old enable marker.
+It does not use PID files or waitpid(-1). The original service/host branch never calls exit from the entry.
 The synthetic host's `_start` exits only when its complete test program ends.
 
 The fresh runner validates a fixed `plugin.meta` version, fixed `plugin.so`

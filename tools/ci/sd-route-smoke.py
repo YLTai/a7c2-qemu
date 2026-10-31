@@ -89,12 +89,13 @@ try:
     start();phase='baseline';result['ui_before']=ui('before')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('stale_request')
     phase='native_suite';text=command('sd_suite')
+    result['stale_session_rejected']='SD_ROUTE_STALE rejected=1' in text
     pattern=r'SD_ROUTE case=([a-z_]+) passed=(\d) entry_ms=(\d+) ticks=(\d+) exit=(-?\d+) signal=(\d+) timeout=(\d) spawn_error=(\d+) duplicates=(\d+) constrained=(\d) reaped=(\d) exec_ready=(\d) preload_ready=(\d)'
     names=['case','passed','entry_ms','ticks','exit','signal','timeout','spawn_error','duplicates','constrained','reaped','exec_ready','preload_ready']
     result['cases']=[dict(zip(names,[r[0]]+list(map(int,r[1:])))) for r in re.findall(pattern,text)]
     result['native_failure_stages']=re.findall(r'SD_ROUTE_FAILURE stage=([a-z_]+) errno=(\d+) case=([a-z_]+)',text)
     result['suite_return_codes']=[int(v) for v in re.findall(r'SD_ROUTE_RC=(\d+)',text)]
-    if len(result['cases'])!=18 or not all(r['passed'] for r in result['cases']) or 'SD_ROUTE_SUITE passed=1' not in text or 'SD_ROUTE_RC=0' not in text:raise RuntimeError('native_suite_failed')
+    if not result['stale_session_rejected'] or len(result['cases'])!=18 or not all(r['passed'] for r in result['cases']) or 'SD_ROUTE_SUITE passed=1' not in text or 'SD_ROUTE_RC=0' not in text:raise RuntimeError('native_suite_failed')
     phase='post_fault_ui';result['ui_after']=ui('after')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('residue')
     close();phase='new_vm';start()

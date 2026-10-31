@@ -4,6 +4,7 @@
 #include "sd-route-common.h"
 #include "sd-route-runner-pin.h"
 #include <sys/mount.h>
+#include <sys/file.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <spawn.h>
@@ -99,7 +100,10 @@ static int copy(const char *source,int dir,const char *target,mode_t mode) {
 }
 static int prepare(const char *name) {
     if(mkdir(SR_ROOT,0700)&&errno!=EEXIST)return -1;
+    struct stat root_st;
+    if(__lxstat(0,SR_ROOT,&root_st)||!S_ISDIR(root_st.st_mode)||root_st.st_uid||(root_st.st_mode&077))return -1;
     if(mkdir(SR_CARD,0700)&&errno!=EEXIST)return -1;
+    if(__lxstat(0,SR_CARD,&root_st)||!S_ISDIR(root_st.st_mode)||root_st.st_uid||(root_st.st_mode&077))return -1;
     /* No stale requests are consumed: enable must be created by this session. */
     unlink(SR_ROOT "/enable");
     if(!strcmp(name,"missing_card"))return 0;
@@ -171,19 +175,38 @@ static int one(const char *name) {
     int card=sr_card(1);if(card>=0){close(card);if(umount(SR_CARD))return -1;}
     return passed?0:-1;
 }
+static int invalidate_request(void){return unlink(SR_ROOT "/enable")&&errno!=ENOENT?-1:0;}
 static int run(void) {
+    if(mkdir(SR_ROOT,0700)&&errno!=EEXIST)return 43;
+    struct stat st;
+    if(__lxstat(0,SR_ROOT,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077))return 43;
+    int lease=open(SR_ROOT "/broker.lock",O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC,0600);
+    if(lease<0||flock(lease,LOCK_EX|LOCK_NB))return 44;
+    /* A stale file is not a queued request. Kernel flock, not PID text, owns the lease. */
+    if(invalidate_request())return 45;
     /* Deliberate inherited descriptor sentinels: directory, device and socket. */
     int directory=open("/simulation",O_RDONLY|O_DIRECTORY);
     int device=open("/dev/null",O_RDWR);
     int sockets[2];
     if(directory<0||device<0||dup2(device,200)!=200||socketpair(AF_UNIX,SOCK_STREAM,0,sockets))return 40;
     pthread_t a,b;if(pthread_create(&a,NULL,pulse,NULL)||pthread_create(&b,NULL,worker,NULL))return 41;
+    /* Simulate a previous session's marker, then perform broker startup invalidation. */
+    int stale=open(SR_ROOT "/enable",O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600);
+    if(stale<0||write(stale,"1",1)!=1)return 46;
+    close(stale);
+    if(invalidate_request())return 46;
+    void *initial=dlopen("/simulation/sd-route-entry.so",RTLD_NOW|RTLD_LOCAL);
+    if(!initial)return 47;
+    dlclose(initial);
+    pthread_mutex_lock(&lock);int stale_rejected=!pending&&!busy&&!done;pthread_mutex_unlock(&lock);
+    if(!stale_rejected)return 48;
+    printf("SD_ROUTE_STALE rejected=1\n");
     const char *cases[]={"disabled","normal","missing_card","missing_file","symlink","bad_version","bad_elf","bad_hash","oversize","exec_denied","noexec","ejected","constructor_crash","run_crash","constructor_hang","run_hang","normal","disabled"};
     int result=0;
     for(unsigned i=0;i<sizeof cases/sizeof cases[0];i++)if(one(cases[i])){result=42;break;}
     pthread_mutex_lock(&lock);stop=1;pthread_cond_broadcast(&wake);pthread_mutex_unlock(&lock);
     pthread_join(a,NULL);pthread_join(b,NULL);
-    close(200);close(directory);close(device);close(sockets[0]);close(sockets[1]);
+    close(200);close(directory);close(device);close(sockets[0]);close(sockets[1]);close(lease);
     printf("SD_ROUTE_SUITE passed=%d sony_loader=0 overlay=0\n",!result);fflush(stdout);return result;
 }
 void _start(void){_exit(run());}
