@@ -24,8 +24,12 @@ def follow(instructions, start, selector, read_integer):
         args = args.split("//", 1)[0].strip()
         p = [part.strip() for part in args.split(',')]
         next_pc = pc + 4
-        if op in ('stp', 'str') and '[sp' in args:
-            pass  # Saved caller registers are irrelevant before the first branch.
+        if op in ('stp', 'str'):
+            base = re.search(r'\[(sp|x\d+)', args)
+            if not base or get(base[1]) != 2 << 48:
+                raise ValueError('nonstack_store')
+            # Only stack saves/scratch writes are ignored in this prefix.
+            pass
         elif op == 'mov':
             put(p[0], operand(p[1]))
         elif op in ('adr', 'adrp'):

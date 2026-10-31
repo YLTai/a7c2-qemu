@@ -21,5 +21,12 @@ class Dispatch(unittest.TestCase):
         edge = follow({0: ('mov', 'x0, #0x40 // #64'), 4: ('br', 'x0')},
                       0, 1, lambda *args: 0)
         self.assertEqual(edge['target'], 64)
+    def test_frame_pointer_stack_scratch_is_not_packet_mutation(self):
+        code = {0: ('mov', 'x29, sp'), 4: ('mov', 'w0, #4'),
+                8: ('str', 'w0, [x29, #40]'), 12: ('mov', 'x0, #64'),
+                16: ('br', 'x0')}
+        self.assertEqual(follow(code, 0, 1, lambda *args: 0)['target'], 64)
+        with self.assertRaises(ValueError):
+            follow({0: ('str', 'w1, [x0, #38]')}, 0, 1, lambda *args: 0)
     def test_unsupported_stops(self):
         with self.assertRaises(ValueError): follow({0: ('blr', 'x0')}, 0, 1, lambda *args: 0)
