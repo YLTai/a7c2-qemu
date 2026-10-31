@@ -90,6 +90,7 @@ if [[ "${MENU_MEDIA_SELFTEST:-0}" == 1 || "${MENU_RM_FILE:-0}" == 1 ]]; then
 fi
 clang "${common[@]}" --sysroot=/usr/aarch64-linux-gnu -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$source_dir/ramfb-viewer.c" "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/ramfb-viewer"
+bash "$source_dir/build-sd-route.sh" "$source_dir" "$analysis_dir/menu-root/simulation" "$lib" "$device_build"
 # Independent RAM plugin and trusted supervisor; neither is injected into IM.
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$source_dir/ram-plugin-boot.c" "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/ram-plugin-boot"

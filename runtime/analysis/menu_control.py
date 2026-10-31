@@ -268,7 +268,7 @@ class VM:
                     raise ValueError('当前输入通道不支持按下/释放生命周期')
                 camera_input_module().validate_request(command)
             elif (isinstance(command,dict) and set(command)=={'action','case'} and command['action']=='ram_plugin'
-                  and command['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status')
+                  and command['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status','sd_suite','sd_clean')
                   and os.environ.get('A7C2_RAM_PLUGIN')=='1' and not self.mock):
                 pass
             elif command == {'action': 'snapshot'}:
