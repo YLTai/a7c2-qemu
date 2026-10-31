@@ -114,6 +114,19 @@ def menu_frame(label):
         'pixel_sha256':last_image['pixel_sha256'],'screen':last_image['firstboot_ui'],
         'model_indices':[int(n) for n in re.findall(r'FL23_MENU_MODEL index=(\d+) after_original_frame=1',console())]})
 
+def program_mode():
+    # Existing reviewed physical MODE dial input. No model write or menu gate
+    # override: Creative Look is unavailable in original Intelligent Auto.
+    before=len(console());idle()
+    vm.enqueue({'action':'position','key':'MODE','position':'P'});idle()
+    def observed():
+        for n,words in re.findall(r'INPUT_EVENT32 n=(\d+) tid=\d+ words=\[([^]\r\n]+)\]',console()[before:]):
+            if [int(word,0) for word in words.split(',')]==[0x7025,0,3,0,0,0,0,0]:return int(n)
+        return 0
+    wait(lambda _:observed())
+    RESULT['mode_input']={'position':'P','native_event':observed()}
+    time.sleep(3);menu_frame('program-mode')
+
 def start(enabled):
     global vm
     os.environ['A7C2_FL23_MENU']='1' if enabled else '0'
@@ -208,6 +221,7 @@ try:
         if step['ready']:break
     else:raise RuntimeError('firstboot_incomplete')
     RESULT['firstboot_ready']=True
+    PHASE='program_mode';program_mode()
     PHASE='menu_navigation'
     key('MENU');capture('menu')
     (OUT/'fl23-menu-open.png').write_bytes((OUT/'fl23-latest.png').read_bytes())
