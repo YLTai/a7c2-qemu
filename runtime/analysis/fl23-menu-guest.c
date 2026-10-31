@@ -30,6 +30,21 @@ typedef int (*backup_read_fn)(unsigned,void *,int);
 typedef int (*backup_write_fn)(unsigned,unsigned,const void *);
 struct guest_state { uintptr_t base; int prot[4]; };
 static unsigned entered;
+static uintptr_t live_base;
+static int live_enabled;
+static unsigned live_sampled;
+static unsigned live_ready;
+static void (*live_log)(const char *,const char *);
+
+void fl23_menu_guest_observe(void) {
+    if(!__atomic_load_n(&live_ready,__ATOMIC_ACQUIRE) ||
+       __atomic_exchange_n(&live_sampled,1,__ATOMIC_ACQ_REL))return;
+    const unsigned char zero[4]={0};int matches=1;
+    for(unsigned i=0;i<7;i++)
+        if(memcmp((void *)(live_base+offsets[i]),live_enabled?fl23_values[i]:zero,fl23_sizes[i]))matches=0;
+    char detail[96];snprintf(detail,sizeof detail,"ap_fields_match=%d enabled=%d after_original_frame=1",matches,live_enabled);
+    live_log("FL23_MENU_LIVE ",detail);
+}
 #ifdef FL23_HOST_TEST
 extern int fl23_test_receipt(void);
 extern int fl23_test_mapping(struct guest_state *);
@@ -60,7 +75,8 @@ static int volatile_receipt(void) {
     return bad?-1:0;
 #endif
 }
-static int mapping_line(struct guest_state *s,const char *line,unsigned long expected_inode,unsigned seen[4]) {
+static int mapping_line(struct guest_state *s,const char *line,unsigned long expected_inode,
+                        unsigned long expected_device,unsigned seen[4]) {
     char path[512],mode[5];unsigned long start,end,fileoff,inode;unsigned major,minor;
     if(guest_scan(line,"%lx-%lx %4s %lx %x:%x %lu %511s",
                   &start,&end,mode,&fileoff,&major,&minor,&inode,path)!=8)return 0;
@@ -69,11 +85,20 @@ static int mapping_line(struct guest_state *s,const char *line,unsigned long exp
         uintptr_t page=s->base+pages[i];
         if(start>=page+4096 || end<=page)continue;
         uintptr_t disk=pages[i]-(i==3?0x10000:0);
-        int expected=i==3?(PROT_READ|PROT_WRITE):(PROT_READ|PROT_EXEC);
         int prot=(mode[0]=='r'?PROT_READ:0)|(mode[1]=='w'?PROT_WRITE:0)|(mode[2]=='x'?PROT_EXEC:0);
-        if(start>page || end<page+4096 || strcmp(path,"/usr/lib/appFw.so") ||
-           mode[3]!='p' || inode!=expected_inode || prot!=expected ||
-           page-start+fileoff!=disk || ++seen[i]!=1)bad=1;
+        /* The loader may narrow ELF permissions (notably GNU_RELRO). Accept
+         * only R or the verified segment's original maximum, never W+X. */
+        int allowed=prot==PROT_READ || prot==(i==3?(PROT_READ|PROT_WRITE):(PROT_READ|PROT_EXEC));
+        if(start>page || end<page+4096)bad|=1;
+        if(strcmp(path,"/usr/lib/appFw.so"))bad|=2;
+        if(mode[3]!='p')bad|=4;
+        if(inode!=expected_inode)bad|=8;
+        unsigned long dev_major=((expected_device>>8)&0xfff)|((expected_device>>32)&~0xfffUL);
+        unsigned long dev_minor=(expected_device&0xff)|((expected_device>>12)&~0xffUL);
+        if(major!=dev_major || minor!=dev_minor)bad|=8192;
+        if(!allowed)bad|=16;
+        if(page-start+fileoff!=disk)bad|=32;
+        if(++seen[i]!=1)bad|=64;
         s->prot[i]=prot;
     }
     return bad;
@@ -83,18 +108,18 @@ static int mapping_check(struct guest_state *s) {
     return fl23_test_mapping(s);
 #else
     struct stat st;int fd=open("/usr/lib/appFw.so",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
-    if(fd<0)return -1;
-    int bad=guest_fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return -1;
-    FILE *f=fopen("/proc/self/maps","r");if(!f)return -1;
+    if(fd<0)return 256;
+    int bad=guest_fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return 512;
+    FILE *f=fopen("/proc/self/maps","r");if(!f)return 1024;
     char line[1024];unsigned seen[4]={0};
     while(fgets(line,sizeof line,f)) {
-        if(!strchr(line,'\n')){bad=1;break;}
-        if(mapping_line(s,line,(unsigned long)st.st_ino,seen))bad=1;
+        if(!strchr(line,'\n')){bad|=2048;break;}
+        bad|=mapping_line(s,line,(unsigned long)st.st_ino,(unsigned long)st.st_dev,seen);
     }
-    if(ferror(f))bad=1;
-    if(fclose(f))bad=1;
-    for(unsigned i=0;i<4;i++)if(seen[i]!=1)bad=1;
-    return bad?-1:0;
+    if(ferror(f))bad|=4096;
+    if(fclose(f))bad|=4096;
+    for(unsigned i=0;i<4;i++)if(seen[i]!=1)bad|=128;
+    return bad;
 #endif
 }
 static int protect(struct guest_state *s,int restore) {
@@ -125,14 +150,19 @@ static int restore_data(struct guest_state *s) {
 int fl23_menu_guest_initialize(uintptr_t base,void *handle,
                               void *(*lookup)(void *,const char *),
                               void (*log)(const char *,const char *)) {
-    if(!getenv("MENU_FL23_MENU"))return 0;
-    if(strcmp(getenv("MENU_FL23_MENU"),"1") ||
+    int enabled=getenv("MENU_FL23_MENU")!=NULL;
+    if(!enabled && !getenv("MENU_FL23_AUDIT"))return 0;
+    if((enabled && strcmp(getenv("MENU_FL23_MENU"),"1")) ||
+       (!enabled && strcmp(getenv("MENU_FL23_AUDIT"),"1")) ||
        __atomic_exchange_n(&entered,1,__ATOMIC_ACQ_REL))return 1;
     log("FL23_MENU_BEGIN ","scope=private_guest_RAM application_init_started=0");
     if(!base || (base&4095) || base>UINTPTR_MAX-0x599a000 || sysconf(_SC_PAGESIZE)!=4096 ||
        volatile_receipt())return 2;
     struct guest_state s={.base=base};
-    if(mapping_check(&s))return 3;
+    int mapped=mapping_check(&s);
+    char detail[120];snprintf(detail,sizeof detail,"result=%d permissions=%d,%d,%d,%d",mapped,s.prot[0],s.prot[1],s.prot[2],s.prot[3]);
+    log("FL23_MENU_MAP ",detail);
+    if(mapped)return 3;
     backup_read_fn rd=(backup_read_fn)lookup(handle,"Backup_nread");
     backup_write_fn wr=(backup_write_fn)lookup(handle,"Backup_write");
     if(!rd||!wr)return 4;
@@ -141,6 +171,12 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
     for(unsigned i=0;i<7;i++) {
         read_field(&s,(enum fl23_field)i,actual);
         if(memcmp(actual,zero,fl23_sizes[i]))return 6;
+    }
+    if(!enabled) {
+        live_base=base;live_enabled=0;live_log=log;
+        __atomic_store_n(&live_ready,1,__ATOMIC_RELEASE);
+        log("FL23_MENU_ORIGINAL ","ap_fields=7 backup_bindings=2 read_only=1");
+        return 0;
     }
     if(protect(&s,0)) {
         int failed=protect(&s,1);
@@ -169,7 +205,10 @@ int fl23_menu_guest_initialize(uintptr_t base,void *handle,
         log("FL23_MENU_ROLLBACK ",data||bk||permissions?"complete=0":"complete=1");
         return 12;
     }
-    if(mapping_check(&s))return 13;
+    struct guest_state restored={.base=base};
+    if(mapping_check(&restored) || memcmp(restored.prot,s.prot,sizeof s.prot))return 13;
+    live_base=base;live_enabled=1;live_log=log;
+    __atomic_store_n(&live_ready,1,__ATOMIC_RELEASE);
     /* No claim about menu/model/CP: those need native UI evidence. */
     log("FL23_MENU_READY ","ap_fields=7 backup_bindings=2 permissions_restored=1 color_verified=0");
     return 0;

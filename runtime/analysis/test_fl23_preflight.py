@@ -130,6 +130,10 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(validate_launch_request({'A7C2_FL23_MENU': '1'}))
         with self.assertRaisesRegex(Rejected, '^invalid_menu_request$'):
             validate_launch_request({'A7C2_FL23_MENU': 'yes'})
+        with self.assertRaisesRegex(Rejected, '^persistent_profile$'):
+            validate_launch_request({'A7C2_FL23_AUDIT':'1','A7C2_SETTINGS_PERSIST':'1'})
+        with self.assertRaisesRegex(Rejected, '^invalid_menu_audit$'):
+            validate_launch_request({'A7C2_FL23_AUDIT':'yes'})
 
     def test_launcher_rejects_before_loading_guest_dependencies(self):
         launcher = Path(__file__).with_name('qemu-menu-probe.py')

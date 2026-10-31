@@ -40,7 +40,11 @@ def require_volatile_profile(env):
 
 def validate_launch_request(env):
     mode = env.get('A7C2_FL23_MENU', '0')
+    audit = env.get('A7C2_FL23_AUDIT', '0')
+    if audit not in ('0','1'):
+        raise Rejected('invalid_menu_audit')
     if mode == '0':
+        if audit=='1':require_volatile_profile(env)
         return
     if mode != '1':
         raise Rejected('invalid_menu_request')

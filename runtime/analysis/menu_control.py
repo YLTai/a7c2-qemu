@@ -82,7 +82,8 @@ def wait_functional_camera_owner(process):
 class VM:
     def __init__(self, command=None, native_display=None,natural_boot=False,usb_net=False,instance=None):
         from fl23_preflight import validate_launch_request
-        if validate_launch_request(os.environ) and (instance is not None or not natural_boot or command is not None):
+        requested=validate_launch_request(os.environ) or os.environ.get('A7C2_FL23_AUDIT')=='1'
+        if requested and (instance is not None or not natural_boot or command is not None):
             raise ValueError('FL23 requires a disposable natural-boot VM without a persistent instance')
         if native_display not in (None, 'none', 'gtk', 'sdl'):
             raise ValueError('不支持的原生显示后端')

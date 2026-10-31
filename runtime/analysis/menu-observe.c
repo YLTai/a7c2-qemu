@@ -83,6 +83,7 @@ void observe_bt_error_place(void *,unsigned short,unsigned int) __asm__("_ZN8BTU
 typedef unsigned long size_t;
 static void *fl23_application_handle;
 extern int fl23_menu_guest_initialize(unsigned long,void *,void *(*)(void *,const char *),void (*)(const char *,const char *));
+extern void fl23_menu_guest_observe(void);
 extern void _exit(int) __attribute__((noreturn));
 typedef unsigned long pthread_t;
 static int (*sd_ack_create)(pthread_t *,const void *,void *(*)(void *),void *);
@@ -6094,7 +6095,7 @@ static void install_create_screen_sentinel(unsigned long base) {
 }
 static void *observe_application_init(void *argument) {
     record("ENTER ", "Application_System_Init");
-    if(getenv("MENU_FL23_MENU") && !getenv("MENU_OBSERVE_SELFTEST")) {
+    if((getenv("MENU_FL23_MENU") || getenv("MENU_FL23_AUDIT")) && !getenv("MENU_OBSERVE_SELFTEST")) {
         int rc=fl23_menu_guest_initialize(appfw_base,fl23_application_handle,real_dlsym,record);
         if(rc) {
             char text[80];snprintf(text,sizeof text,"code=%d application_init_called=0",rc);
@@ -10020,6 +10021,7 @@ static unsigned long observe_draw_framebuffer(void *object) {
     record_frame_call("FRAME_DRAW_ENTER ", count, object, 0);
     record_frame_sync(count);
     unsigned long result = real_draw_framebuffer(object);
+    fl23_menu_guest_observe();
     if(getenv("MENU_DMM_UNIT_CONFIG") && (unsigned int)syscall(178)==ui_thread_id)
         capture_dialog_resource();
     record_frame_call("FRAME_DRAW_RETURN ", count, object, result);

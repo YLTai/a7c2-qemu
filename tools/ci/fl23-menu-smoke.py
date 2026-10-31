@@ -24,9 +24,25 @@ RESULT={'passed':False,'scope':'FL23 original menu only; CP/ISP color not verifi
 vm=None
 PHASE='start'
 last_image=None
+run_before=''
+
+def prepare_run():
+    global run_before
+    latest=ROOT/'runtime/analysis/latest-menu-run.txt'
+    run_before=latest.read_text().strip() if latest.is_file() else ''
 
 def console():
-    path=Path(vm.status()['run'])/'console.log'
+    name=vm.status()['run']
+    if not name:
+        # Startup can fail before the control socket's ready reply. This CI owns
+        # one VM at a time; accept only its newly created run, never an old run.
+        latest=ROOT/'runtime/analysis/latest-menu-run.txt'
+        name=latest.read_text().strip() if latest.is_file() else ''
+        if not name or name==run_before:return ''
+    run=Path(name).resolve()
+    if run.parent!=(ROOT/'runtime/analysis/menu-runs').resolve():
+        raise RuntimeError('invalid_private_run_path')
+    path=run/'console.log'
     return path.read_text(errors='replace') if path.is_file() else ''
 
 def wait(predicate,timeout=40):
@@ -46,7 +62,7 @@ def command(case):
     idle()
     with vm.lock:vm.plugin_result=None
     vm.enqueue({'action':'ram_plugin','case':case})
-    result=wait(lambda s:bool(s['plugin_result']))['plugin_result']
+    result=wait(lambda s:bool(s['plugin_result']),120 if case=='fl23_status' else 40)['plugin_result']
     if result['case']!=case or 'RAM_PLUGIN_RC=0' not in result['output']:
         raise RuntimeError('plugin_request_failed')
     return result['output']
@@ -69,7 +85,9 @@ def key(name,mouse=False):
 def start(enabled):
     global vm
     os.environ['A7C2_FL23_MENU']='1' if enabled else '0'
+    os.environ['A7C2_FL23_AUDIT']='0' if enabled else '1'
     vm=VM(native_display='none',natural_boot=True,usb_net=True,instance=None)
+    prepare_run()
     vm.start()
     next_progress=0
     def running(state):
@@ -84,9 +102,20 @@ def start(enabled):
     output=command('fl23_status')
     expected='FL23_BINDINGS fl2=10 fl3=11' if enabled else 'FL23_BINDINGS fl2=0 fl3=0'
     if expected not in output:raise RuntimeError('binding_readback_mismatch')
+    expected_files={'/usr/lib/appFw.so':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b',
+                    '/setting/Backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47'}
+    for name,digest in expected_files.items():
+        if not re.search(r'(?m)^'+digest+r'\s+'+re.escape(name)+r'\r?$',output):
+            raise RuntimeError('guest_original_file_changed')
     ready='FL23_MENU_READY ap_fields=7 backup_bindings=2 permissions_restored=1' in console()
     if ready!=enabled:raise RuntimeError('broker_receipt_mismatch')
-    RESULT['cases'].append({'enabled':enabled,'bindings_readback':True,'broker_ready':ready})
+    live_receipt='FL23_MENU_LIVE ap_fields_match=1 enabled='+str(int(enabled))+' after_original_frame=1'
+    wait(lambda _:live_receipt in console())
+    if not enabled and 'FL23_MENU_ORIGINAL ap_fields=7 backup_bindings=2 read_only=1' not in console():
+        raise RuntimeError('original_ap_fields_unverified')
+    RESULT['cases'].append({'enabled':enabled,'bindings_readback':True,'broker_ready':ready,
+                            'appfw_and_backup_file_hashes':True,'ap_fields_verified_after_first_frame':True,
+                            'ap_originals_verified':not enabled})
 
 def close():
     global vm
@@ -98,9 +127,10 @@ def close():
 
 def negative_rollback():
     global vm
-    os.environ.update(A7C2_FL23_MENU='1',A7C2_FL23_NEGATIVE='rollback')
+    os.environ.update(A7C2_FL23_MENU='1',A7C2_FL23_AUDIT='0',A7C2_FL23_NEGATIVE='rollback')
     try:
         vm=VM(native_display='none',natural_boot=True,usb_net=True,instance=None)
+        prepare_run()
         vm.start();deadline=time.monotonic()+600;next_progress=0
         while time.monotonic()<deadline:
             text=console()
@@ -149,6 +179,8 @@ except Exception as error:
         text=console()
         fatal=re.findall(r'FL23_MENU_FATAL code=(\d+)',text)
         RESULT['broker_error_codes']=[int(code) for code in fatal]
+        RESULT['broker_maps']=[list(map(int,values)) for values in re.findall(
+            r'FL23_MENU_MAP result=(\d+) permissions=(\d+),(\d+),(\d+),(\d+)',text)]
         RESULT['rollback_complete']='FL23_MENU_ROLLBACK complete=1' in text
         RESULT['broker_started']='FL23_MENU_BEGIN' in text
 finally:

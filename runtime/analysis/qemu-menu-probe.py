@@ -19,6 +19,8 @@ from fl23_preflight import validate_launch_request, inspect_original, SOURCE_SHA
 
 # Check before staging initramfs, settings restore, or starting a guest.
 fl23_menu = bool(validate_launch_request(os.environ))
+fl23_audit = os.environ.get('A7C2_FL23_AUDIT')=='1'
+fl23_requested = fl23_menu or fl23_audit
 fl23_negative = os.environ.get('A7C2_FL23_NEGATIVE','')
 if fl23_negative not in ('','rollback') or (fl23_negative and not fl23_menu):
     raise ValueError('FL23 negative test requires the fixed rollback case and FL23 mode')
@@ -83,7 +85,7 @@ parser.add_argument("--native-display", choices=('none', 'gtk', 'sdl'),
 parser.add_argument("--firmware-identity", action="store_true", help="supply verified selected-FDAT identity files on virtual RAM storage; no real base-updater partition")
 parser.add_argument("--display-info-service", action="store_true", help="return the verified panel/EVF info protocol for explicitly configured 640x480 virtual displays")
 args = parser.parse_args()
-if fl23_menu and (not args.initramfs or args.initramfs_file or not args.observe or
+if fl23_requested and (not args.initramfs or args.initramfs_file or not args.observe or
                   not args.seed_backup or not args.seed_power_on):
     parser.error('FL23 requires the original observed volatile raw-initramfs boot profile')
 input_key_mode = os.environ.get('MENU_INJECT_KEY', '')
@@ -458,7 +460,7 @@ boot_type = int(os.environ.get('QEMU_BOOT_TYPE', '1'), 0)
 if not 1 <= boot_type <= 8:
     parser.error('QEMU_BOOT_TYPE must be between 1 and 8')
 base = Path(__file__).resolve().parent
-if fl23_menu:
+if fl23_requested:
     inspect_original((base/'menu-root/usr/lib/appFw.so').read_bytes())
 sd_seed=Path(os.environ['A7C2_SD_IMAGE']).absolute() if os.environ.get('A7C2_SD_IMAGE') else None
 sd_seed_bytes=sd_seed_sha256=None
@@ -570,7 +572,7 @@ if os.path.lexists(overwrite_directory):
     if overwrite_directory.is_symlink() or not overwrite_directory.is_dir():
         raise ValueError('overwrite must be an ordinary directory')
     if any(overwrite_directory.iterdir()):
-        if fl23_menu:raise ValueError('FL23 forbids firmware overlays')
+        if fl23_requested:raise ValueError('FL23 forbids firmware overlays')
         from firmware_overlay import build_overlay_initramfs
         selected=out/'overwrite-initramfs.cpio'
         overwrite_manifest=build_overlay_initramfs(Path(command[-1]),overwrite_directory,selected)
@@ -972,7 +974,7 @@ if args.initramfs:
         for name in ('boot','hello','malformed','crash','timeout','forbidden','invalid_elf'):
             guest='simulation/ram-plugin-'+name
             expected_guest[guest]=manifest['files'][str(base/'menu-root'/guest)]
-    if fl23_menu:
+    if fl23_requested:
         expected_guest['usr/lib/appFw.so']=FL23_SOURCE_SHA
         expected_guest['simulation/fl23-menu-readback']=sha256_file(base/'menu-root/simulation/fl23-menu-readback')
     if live_fd or args.headless_osd:
@@ -1204,13 +1206,13 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                               % (1 if os.environ.get('MENU_BACKUP_SAVE') == '1' else 0),
                               "ls -l /dev/mem /dev/backup", "insmod /usr/kmod/stream.ko",
                               "insmod /usr/kmod/stream2.ko"]
-                    if fl23_menu:
+                    if fl23_requested:
                         # Replace the module-load line with a strict fixed command;
                         # the root-only receipt is created only after a fresh load.
                         line="insmod /usr/kmod/backup.ko Backup_load=1 Backup_save=0"
                         setup[setup.index(line)] = ("if " + line + "; then umask 077; "
                             "printf '0\\n' > /tmp/fl23-backup-volatile; else exit 86; fi")
-                        setup += ["export MENU_FL23_MENU=1"]
+                        setup += ["export MENU_FL23_MENU=1" if fl23_menu else "export MENU_FL23_AUDIT=1"]
                         if fl23_negative:setup += ["export MENU_FL23_TEST_ROLLBACK=1"]
                 if args.load_dmm:
                     setup += ["cp -a /seed-setting/. /setting/",

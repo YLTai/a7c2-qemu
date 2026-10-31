@@ -189,3 +189,25 @@ failed guest-helper linkage before any guest boot. The original glibc requires
 to that ABI and the legacy `sscanf` symbol instead of build-sysroot C23 aliases.
 FL23 diagnostic prefixes are now mirrored to the bounded console channel, so
 startup failures and rollback can be inspected without publishing private logs.
+
+Run `41193864425` reached the real FL23 broker but rejected live mapping before
+any writes (code 3). The test's late ready-channel diagnostics then attempted SD
+save despite application initialization having aborted; all three normal close
+attempts failed. That run is not recovery evidence. The next probe reads only its
+new private run directory before the ready reply, so startup abort uses the
+existing starting-VM close path instead of treating it as a running camera.
+
+Live mapping checks now admit R-only loader reductions of the original ELF
+permissions (including RELRO), still reject W+X/shared/unexpected mappings, compare
+both device and inode, and verify the *exact* saved permissions after restoration.
+Fixed numeric map diagnostics distinguish the rejection reason without exporting
+memory. An opt-in read-only disabled-VM audit checks all seven original AP fields
+and both Backup bytes before app init; a synchronized observer verifies the AP
+fields again after the first original frame. The status test also checks guest
+appFw and Backup file SHA-256 values against the pinned original inputs.
+
+These changes still do not assert menu selection or color processing. The menu
+probe deliberately remains unsuccessful until reviewed native navigation and
+selection/readback assertions are added. Diagnostic-only CI iterations may use
+`fl23_only=true`; final validation must use the default false and include all
+existing regressions.

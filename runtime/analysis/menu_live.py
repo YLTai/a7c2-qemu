@@ -539,7 +539,7 @@ def run_live(proc, out, descriptor, display_capture=None, sd_export=None, networ
                   and os.environ.get('A7C2_RAM_PLUGIN') == '1'):
                 mode=request['case']
                 if mode=='fl23_status':
-                    output=live_serial('/simulation/fl23-menu-readback; echo RAM_PLUGIN_RC=$?')
+                    output=live_serial('/simulation/fl23-menu-readback && /bin/busybox sha256sum /usr/lib/appFw.so /setting/Backup.bin; echo RAM_PLUGIN_RC=$?')
                 else:
                     output=live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
                 result={'type':'ram_plugin','case':mode,'output':output.decode('utf-8','replace')[-2048:]}
