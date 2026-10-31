@@ -8,7 +8,8 @@
 #include <linux/magic.h>
 static unsigned char fixture_data[65536 + 3];
 static size_t fixture_length;
-static unsigned fixture_mounts, fixture_allocs, fixture_logs;
+static unsigned fixture_mounts, fixture_allocs, fixture_logs, fixture_closes;
+static int fixture_close_result;
 static int fixture_enabled;
 static struct { unsigned long reserved; void *bytes; } fixture_buffer;
 static struct { void *first; unsigned long reserved[3]; } fixture_dmm;
@@ -34,6 +35,14 @@ void fixture_log_value(unsigned char level, const char *text, unsigned value) __
 void fixture_log_value(unsigned char level, const char *text, unsigned value) { (void)level; (void)text; (void)value; fixture_logs++; }
 void fixture_dump(unsigned char level, const char *text, unsigned char *data, unsigned count) __asm__("_Z22jiritsu_cppdump_logrechPKcPhj");
 void fixture_dump(unsigned char level, const char *text, unsigned char *data, unsigned count) { (void)level; (void)text; (void)data; (void)count; fixture_logs++; }
+/* Transparent observation, not a simulated successful dlclose. */
+int dlclose(void *handle) {
+    int (*original)(void *) = dlsym(RTLD_NEXT, "dlclose");
+    if (!original) _exit(74);
+    int rc = original(handle);
+    if (fixture_enabled) { fixture_closes++; fixture_close_result = rc; }
+    return rc;
+}
 static int fixture_prepare(void) {
     int input = open("/simulation/jiritsu-return.so", O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
     if (!sr_regular(input) || sr_hash(input, JIRITSU_RETURN_HASH)) { if(input>=0)close(input); return 50; }
@@ -67,10 +76,10 @@ static int fixture_handler(void *handle) {
     int fd = open("/tmp/jiritsu/libJit.so", O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
     int matches = fd >= 0 && sr_hash(fd, JIRITSU_RETURN_HASH) == 0;
     if (fd >= 0) close(fd);
-    printf("JIRITSU_PROBE original_set_handler=1 file_hash=%d mount_stubs=%u dmm_stubs=%u log_stubs=%u\n",
-           matches, fixture_mounts, fixture_allocs, fixture_logs);
+    printf("JIRITSU_PROBE original_set_handler=1 file_hash=%d mount_stubs=%u dmm_stubs=%u log_stubs=%u dlclose_calls=%u dlclose_result=%d\n",
+           matches, fixture_mounts, fixture_allocs, fixture_logs, fixture_closes, fixture_close_result);
     fflush(stdout);
-    return matches && fixture_mounts == 1 && fixture_allocs == 1 ? 0 : 57;
+    return matches && fixture_mounts == 1 && fixture_allocs == 1 && fixture_closes == 1 && fixture_close_result == 0 ? 0 : 57;
 }
 static int fixture_cleanup(void) {
     /* Remove only the tmpfs this process mounted, after its child is reaped.
