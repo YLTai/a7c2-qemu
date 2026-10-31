@@ -156,6 +156,10 @@ instructions or shell access to display bytecode. Request it with
 with `MENU_BACKUP_SAVE=0` and `A7C2_SETTINGS_PERSIST=0`. Persistent instances,
 restored settings, mock backends, firmware overlays and other firmware identities
 are rejected. Disabling requires a fresh VM with `A7C2_FL23_MENU=0`.
+This is a startup request, not a hot enable/disable command. The broker runs
+before Application_System_Init (after shared-library constructors). The existing
+`ram_plugin` `off` request only disables the display overlay; it does not undo
+FL23. `ram_plugin` `fl23_status` is a read-only fixed diagnostic request.
 The original Intelligent Auto restriction is retained: use the existing MODE
 dial control to choose P before opening Exposure/Color > Color/Tone > Creative
 Look. The broker does not override native shooting-mode restrictions.
@@ -196,7 +200,10 @@ results. Full [run 41201840284](https://github.com/YLTai/a7c2-qemu/actions/runs/
 passed at `2e8b7494926e56dba4672b2d08f30e90f3a208e3`: original firmware startup,
 Hello World/negative/recovery tests, FL23 menu and parameter assertions, native
 forced rollback and fresh disabled originals. All four FL23 VM closes succeeded
-on their first attempt. Exact QEMU source and binary caches were restored and
+on their first attempt. The separate Hello World test needed one normal cleanup
+retry (first close reported cleanup_failed; second close succeeded); its restart
+closed on the first attempt. No forced-close bypass was used.
+Exact QEMU source and binary caches were restored and
 verified. Artifact `firmware-boot-evidence` (`13043257647`) contains the original
 screenshots and fixed-schema results; `fl23-result.json` reports passed=true,
 selection_verified=true, parameter_readback_verified=true, color_verified=false.
