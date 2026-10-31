@@ -1,6 +1,9 @@
 # Offline USB no-op candidate and lifecycle review
 
 Status: source review and offline simulation only. **No USB backend is enabled.**
+Follow-up original-firmware [lifecycle investigation](LIFECYCLE.md) found VFAT
+mount declarations and existing-file loader paths. Do not interpret the older
+unresolved-mount discussion below as evidence that the upstream upload is RAM-only.
 There is no camera upload, authentication, hardware passthrough or automatic retry
 in this tool. Model ILCE-7CM2 / firmware 2.01 is the intended target, not a claim
 that a device has been independently identified. User-reported successful service
