@@ -54,7 +54,7 @@ def wait(predicate,timeout=40):
         state=vm.status()
         if state['mock'] or state['state'] in ('error','faulted','exited','disconnected'):
             raise RuntimeError('guest_unhealthy')
-        if 'FL23_MENU_FATAL' in console() or 'FL23_GUARD_FATAL' in console():
+        if 'FL23_MENU_FATAL' in console() or re.search(r'(?m)^FL23_GUARD_FATAL code=\d+\r?$',console()):
             raise RuntimeError('guest_broker_rejected')
         if predicate(state):return state
         time.sleep(.2)
@@ -229,8 +229,8 @@ except Exception as error:
         text=console()
         fatal=re.findall(r'FL23_MENU_FATAL code=(\d+)',text)
         RESULT['broker_error_codes']=[int(code) for code in fatal]
-        RESULT['storage_mount_ready']='FL23_GUARD storage_mount_ready=1' in text
-        RESULT['storage_mount_error_codes']=[int(n) for n in re.findall(r'FL23_GUARD_FATAL code=(\d+)',text)]
+        RESULT['storage_mount_ready']=bool(re.search(r'(?m)^FL23_GUARD storage_mount_ready=1\r?$',text))
+        RESULT['storage_mount_error_codes']=[int(n) for n in re.findall(r'(?m)^FL23_GUARD_FATAL code=(\d+)\r?$',text)]
         RESULT['broker_maps']=[list(map(int,values)) for values in re.findall(
             r'FL23_MENU_MAP result=(\d+) permissions=(\d+),(\d+),(\d+),(\d+)',text)]
         RESULT['rollback_complete']='FL23_MENU_ROLLBACK complete=1' in text

@@ -1216,7 +1216,7 @@ with (out / "console.log").open("a" if live_fd else "w") as console:
                         # driver; native Backup operations may still use RAM.
                         at=setup.index("cp /seed-backup.bin /setting/Backup.bin")+1
                         setup[at:at]=["if mount -o bind /setting/Backup.bin /setting/Backup.bin && "
-                            "mount -o remount,bind,ro /setting/Backup.bin /setting/Backup.bin; "
+                            "mount -o remount,bind,ro /setting/Backup.bin; "
                             "then echo FL23_GUARD storage_mount_ready=1; "
                             "else echo FL23_GUARD_FATAL code=1; exit 86; fi"]
                         # Replace the module-load line with a strict fixed command;
