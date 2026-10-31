@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include "jiritsu-fixture.h"
 
 static int child(int lazy) {
     DIR *directory = opendir("/proc/self/fd");
@@ -71,19 +72,20 @@ static int child(int lazy) {
     if (lazy) {
         /* Fixed selector/base only. This original helper constructs a pathname;
          * no upload/read/delete handler, native payload or service init is called. */
-        int (*filename)(unsigned, const char *, char *, unsigned) =
+        void (*filename)(unsigned, const char *, char *, unsigned) =
             dlsym(handle, "get_access_filename");
         char path[514] = {0};
         if (!filename) return 33;
-        int rc = filename(2, "/tmp/jiritsu", path, sizeof(path));
+        filename(2, "/tmp/jiritsu", path, sizeof(path));
         int matched = !strcmp(path, "/tmp/jiritsu/libJit.so");
-        printf("JIRITSU_PROBE original_filename_helper=1 matched=%d return=%d\n", matched, rc);
+        printf("JIRITSU_PROBE original_filename_helper=1 matched=%d\n", matched);
         fflush(stdout);
         if (!matched) return 34;
     }
+    if (lazy == 2) { int rc = fixture_handler(handle); if (rc) return rc; }
     int set = dlsym(handle, "adj_cmd_set_file2") != NULL;
     int get = dlsym(handle, "adj_cmd_get_file2") != NULL;
-    printf("JIRITSU_PROBE loaded=1 set_export=%d get_export=%d handlers_called=0\n", set, get);
+    printf("JIRITSU_PROBE loaded=1 set_export=%d get_export=%d handlers_called=%d\n", set, get, lazy == 2);
     fflush(stdout);
     return dlclose(handle) ? 32 : 0;
 }
@@ -93,7 +95,7 @@ static double now(void) {
     return t.tv_sec + t.tv_nsec / 1e9;
 }
 static int one(int lazy) {
-    printf("JIRITSU_PROBE binding=%s\n", lazy ? "lazy" : "now");
+    printf("JIRITSU_PROBE binding=%s\n", lazy == 2 ? "handler" : lazy ? "lazy" : "now");
     fflush(stdout);
     double deadline = now();
     if (deadline < 0) return 40;
@@ -120,4 +122,15 @@ static int one(int lazy) {
            WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     fflush(stdout); return 0;
 }
-void _start(void) { int rc = one(0); if (!rc) rc = one(1); _exit(rc); }
+void _start(void) {
+    int rc = one(0);
+    if (!rc) rc = one(1);
+    if (!rc) {
+        rc = fixture_prepare();
+        if (!rc) {
+            rc = one(2);
+            if (rc != 42) { int cleanup = fixture_cleanup(); if (!rc) rc = cleanup; }
+        }
+    }
+    _exit(rc);
+}

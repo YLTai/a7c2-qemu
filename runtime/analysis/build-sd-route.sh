@@ -32,13 +32,19 @@ clang "${common[@]}" -shared -fPIC -Wl,-init,_init \
   "$src/sd-route-entry.c" "${libraries[@]}" -o "$out/sd-route-entry.so"
 clang "${common[@]}" -Wl,--no-undefined,-e,_start,--export-dynamic,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$src/sd-route-host.c" "${libraries[@]}" -o "$out/sd-route-host"
-clang "${common[@]}" -Wl,--no-undefined,-e,_start,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
+clang "${common[@]}" -shared -fPIC -Wl,--no-undefined,-init,_init \
+  "$src/jiritsu-return.c" -o "$out/jiritsu-return.so"
+python3 - "$out/jiritsu-return.so" "$work/jiritsu-return-pin.h" <<'PIN'
+import pathlib,hashlib,sys
+pathlib.Path(sys.argv[2]).write_text('#define JIRITSU_RETURN_HASH "'+hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()+'"\n')
+PIN
+clang "${common[@]}" -Wl,--no-undefined,-e,_start,--export-dynamic,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$src/jiritsu-load-probe.c" "${libraries[@]}" -o "$out/jiritsu-load-probe"
 # Own-binary ABI metadata only; no original firmware ELF content is exported.
 python3 - "$out" <<'PY'
 import hashlib,json,pathlib,subprocess,sys,re
 out=pathlib.Path(sys.argv[1]); records=[]
-for p in sorted([*out.glob('sd-route-*'), out/'jiritsu-load-probe']):
+for p in sorted([*out.glob('sd-route-*'), out/'jiritsu-load-probe', out/'jiritsu-return.so']):
  if not p.is_file():continue
  data=p.read_bytes()
  ph=subprocess.check_output(['aarch64-linux-gnu-readelf','-lW',str(p)],text=True)
