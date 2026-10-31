@@ -143,11 +143,12 @@ jobs:
         env:
           A7C2_SPARSE_RAM: '1'
         run: python3 tools/ci/firmware-headless-smoke.py
-      - name: Verify plugin filter and display parser logic
+      - name: Verify bytecode interpreter and display parser logic
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         run: |
-          cc -O2 -Wall -Wextra -Werror tools/ci/test-ram-plugin-filter.c -o "$RUNNER_TEMP/ram-plugin-filter-test"
-          "$RUNNER_TEMP/ram-plugin-filter-test"
+          python3 runtime/analysis/build-ram-bytecode.py "$RUNNER_TEMP/bytecode-fixtures"
+          cc -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-ram-bytecode.c -o "$RUNNER_TEMP/ram-bytecode-test"
+          "$RUNNER_TEMP/ram-bytecode-test" "$RUNNER_TEMP/bytecode-fixtures"
           cc -O2 -Wall -Wextra -Werror runtime/analysis/test-ramfb-viewer.c -o "$RUNNER_TEMP/ramfb-unit-test"
           "$RUNNER_TEMP/ramfb-unit-test"
       - name: Real guest RAM plugin and recovery tests

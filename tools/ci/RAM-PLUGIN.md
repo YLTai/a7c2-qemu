@@ -1,53 +1,63 @@
-# RAM overlay experiment
+# Experimental RAM display bytecode
 
-This experiment runs an independent AArch64 `HELLO WORLD` program inside the
-emulated guest. It does not modify the original firmware input or flash hardware.
-The real firmware boots to its language-selection screen, but native plugin
-execution is blocked by the original guest kernel's missing seccomp capability.
-Run [41138388158](https://github.com/YLTai/a7c2-qemu/actions/runs/41138388158),
-commit `2ba9af1249dfac526fb0ad4c7edc22eb828b12c9`, measured
-`PR_GET_SECCOMP -> -1, errno=22 (EINVAL)`. The supervisor returned 2 before
-executing plugin code. Linux documents this query failure for a kernel without
-`CONFIG_SECCOMP`: [PR_GET_SECCOMP](https://man7.org/linux/man-pages/man2/pr_get_seccomp.2const.html).
+This is an experimental QEMU startup hook, not a deployable camera bootloader.
+The original guest kernel and original firmware input remain unchanged. The
+native plugin attempt failed because the guest lacks seccomp; this version uses
+a small trusted display-command interpreter instead. No bytecode is executed
+as machine code, JIT-compiled, dynamically linked, or passed to a shell.
 
-Actual guest evidence: original firmware screenshot, overlay-off screenshot and
-normal save/close passed. Hello was rejected before execution. Missing, invalid
-ELF, malformed output, crash, timeout, forbidden syscall and fresh-instance
-restart cases remain unexecuted because the prerequisite failed. Host filter,
-FIFO rejection, display parser and exact-mask logic tests passed; these are not
-proof of guest enforcement. The test job intentionally remains failing.
+The 16-byte header is `A7BC0001`, a little-endian 16-bit instruction count, and
+six zero reserved bytes. Every instruction is four bytes:
 
-No unconfined fallback or guest-kernel modification is applied. Installing a
-host library cannot enable this guest kernel feature. Continuing the native-code
-design requires a compatible guest kernel with seccomp support and new boot/ABI
-validation; alternatively, a separately reviewed restricted bytecode design
-would change the plugin execution model.
+| Opcode | Operands | Effect |
+| --- | --- | --- |
+| 0 | all zero | Finish and return the complete mask |
+| 1 | x, y, value | Set one pixel; x<160, y<24, value is 0 or 255 |
+| 2 | target low byte, high byte, zero | Jump to an instruction index |
+| 3 | all zero | Abort without publishing output |
 
-`runtime/analysis/ram-plugin-boot.c` is the trusted supervisor. It copies a bounded
-executable into a sealed memfd, starts it with an empty environment and filesystem
-root, drops groups, IDs and capabilities, sets resource limits and no-new-privileges,
-and installs an AArch64 syscall allowlist before execution. The plugin can write
-only to its output pipe and exit. The executable descriptor closes on execution.
-The supervisor enforces a wall deadline and accepts only one fixed-size mask.
-Missing kernel support or failed isolation setup rejects execution.
+Input is at most 8,208 bytes / 2,048 instructions. Every instruction, including
+unreachable instructions, is validated before execution. Unknown opcodes,
+reserved bits, invalid coordinates/targets, truncated operands, trailing bytes
+and ELF inputs are rejected. There are no plugin pointers, loads/stores to
+arbitrary addresses, syscalls, file/device/network operations, or native calls.
+The jump operation makes a real 4,096-step execution budget test possible.
+The input file is opened nonblocking without following symlinks, checked as a
+bounded regular file, and copied once into RAM. Only that snapshot is interpreted.
 
-The plugin never enters the camera IM process or accesses the display bridge.
-`ramfb-viewer.c` is the trusted bridge: after validating the original HOSDAP02
-frame, it converts that frame, blends a validated 160x24 mask, and submits it.
-Removing a mask recomposes the original frame. The mask file is root-owned and
-not writable by the plugin identity.
+`ram-plugin-boot.c` is the trusted supervisor. Its child closes inherited file
+descriptors except the output pipe, enters an empty chroot, drops supplementary
+groups, UID/GID and capabilities, applies no-new-privileges and resource limits,
+and interprets the snapshot. A parent wall deadline remains as a fallback.
+Only successful execution returning one valid 3,856-byte mask is atomically
+published. Rejected/aborted/over-budget programs remove the previous mask.
 
-`tools/ci/ram-plugin-smoke.py` exercises hello, missing input, invalid ELF,
-malformed output, crash, timeout, forbidden syscall and a fresh VM restart.
-It requires an exact yellow glyph mask, including negative pixels, and verifies
-actual guest responses and QEMU screenshots; host-rendered images
-are never used as evidence. These tests cover the bounded demonstration, not
-all arbitrary native plugins, guest kernel vulnerabilities or real-camera safety.
+`ramfb-viewer.c` is a separate trusted display bridge. It validates the original
+HOSDAP02 frame and the root-owned fixed mask, converts the original frame, blends
+the mask and submits it. It never interprets plugin commands. If the camera's
+source snapshot disappears or becomes invalid, the bridge can retain its last
+scanout; removal is visible only after a valid source frame can be recomposed.
+This is not a guaranteed display-recovery mechanism for arbitrary firmware faults.
 
-Firmware and extracted images remain temporary runner inputs. Public artifacts
-are limited to expressly permitted emulator screenshots and fixed-schema results.
+The trusted computing base includes the C interpreter/supervisor, libc, display
+bridge, original guest kernel and QEMU. Without guest seccomp, a vulnerability in
+the interpreter could expose native syscalls with its reduced process privileges;
+chroot and resource limits do not replace a syscall filter or prevent kernel
+exploits. These constraints apply to the bytecode language, not arbitrary native
+plugins. This experiment does not establish real-camera compatibility or freedom
+from bricking risk.
 
-To reproduce, configure the repository secret `SONY_FIRMWARE_URL` and manually
-dispatch `qemu-build.yml` on `ci/qemu-actions` with `firmware=true`. The URL is never
-provided as a public workflow input. The job restores the verified QEMU cache,
-uses a process-local sparse RAM backend, and keeps host isolation enabled.
+`build-ram-bytecode.py` creates the Hello World program and failure fixtures.
+CI case labels `crash` and `timeout` mean an explicit bytecode abort (exit 42)
+and instruction-budget exhaustion (exit 43), respectively; they are not native
+crash or wall-timeout tests. Invalid programs exit 41. Host sanitizer tests check
+fixtures, truncated/mutated inputs, valid prefixes with invalid tails, bounds,
+budget exhaustion, FIFO and symlink rejection. Guest tests require exact glyph
+and negative pixels from actual QMP screenshots, recovery after each bad input,
+normal save/close, and a new VM instance. Real guest results are pending for this
+revision; host tests are not evidence of guest display success.
+
+Dispatch `qemu-build.yml` on `ci/qemu-actions` with `firmware=true`. The existing
+`SONY_FIRMWARE_URL` repository secret supplies the temporary input. QEMU's exact
+source/binary caches are reused. Public artifacts contain only approved actual
+emulator screenshots and fixed-schema results, never firmware or extracted images.

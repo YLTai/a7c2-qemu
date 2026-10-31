@@ -81,14 +81,8 @@ clang "${common[@]}" --sysroot=/usr/aarch64-linux-gnu -Wl,-e,_start -Wl,--dynami
 # Independent RAM plugin and trusted supervisor; neither is injected into IM.
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$source_dir/ram-plugin-boot.c" "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/ram-plugin-boot"
-printf 'not-an-ELF\n' > "$analysis_dir/menu-root/simulation/ram-plugin-invalid_elf"
-chmod 0755 "$analysis_dir/menu-root/simulation/ram-plugin-invalid_elf"
-plugin_cases=(hello malformed crash timeout forbidden)
-for index in "${!plugin_cases[@]}"; do
-  clang --target=aarch64-linux-gnu -fuse-ld=lld -nostdlib -static -O2 -ffreestanding -fno-builtin -fno-stack-protector \
-    -Wl,-e,_start,-z,max-page-size=4096 -DRP_CASE="$index" "$source_dir/ram-hello.c" \
-    -o "$analysis_dir/menu-root/simulation/ram-plugin-${plugin_cases[$index]}"
-done
+python3 "$analysis_dir/build-ram-bytecode.py" "$analysis_dir/menu-root/simulation"
+
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
   "$source_dir/sd-window-export.c" "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/sd-window-export"
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \

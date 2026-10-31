@@ -861,7 +861,7 @@ for path in [Path(command[-1]), base / 'qemu-menu-probe.py', base / 'backup_prof
              base / 'ramfb-viewer.c', base / 'menu-root/simulation/ramfb-viewer',
              base / 'ram-plugin.h',
              base / 'ram-plugin-boot.c',
-             base / 'ram-hello.c',
+             base / 'ram-bytecode.h', base / 'build-ram-bytecode.py',
              base / 'menu-root/simulation/ram-plugin-boot',
              base / 'menu-root/simulation/ram-plugin-hello',
              base / 'menu-root/simulation/ram-plugin-malformed',

@@ -20,7 +20,7 @@ os.environ['A7C2_RAM_PLUGIN'] = '1'
 OUT = ROOT / 'ci-firmware-evidence'
 OUT.mkdir(exist_ok=True)
 INSTANCE = default_instance(ROOT / 'runtime/analysis/camera-instances')
-RESULT = {'scope': 'actual QEMU guest; bounded demo plugin, not arbitrary plugin safety',
+RESULT = {'scope': 'actual QEMU guest; interpreted bytecode, no native plugin execution',
           'passed': False, 'cases': []}
 PHASE = 'start'
 
@@ -64,34 +64,25 @@ def command(vm, case):
             if rejected:
                 sig, code, timeout, size = map(int, rejected.groups())
                 record.update(signal=sig, exit=code, timed_out=bool(timeout), output_bytes=size)
-            unsupported = re.search(r'RAM_PLUGIN_UNSUPPORTED seccomp_query errno=(\d+)', text)
-            if unsupported:
-                record.update(unsupported='seccomp_query', errno=int(unsupported.group(1)))
-            if 160 <= record.get('exit', -1) <= 199:
-                record.update(isolation_failure='no_new_privs', errno=record['exit']-160)
-            if 200 <= record.get('exit', -1) <= 239:
-                record.update(isolation_failure='seccomp_filter', errno=record['exit']-200)
-            if 'RAM_PLUGIN_UNSUPPORTED memfd' in text:
-                record['unsupported'] = 'memfd'
             rc = re.search(r'RAM_PLUGIN_RC=(\d+)', text)
             if rc:
                 record['supervisor_exit'] = int(rc.group(1))
             if case == 'hello':
-                record['ok'] = 'RAM_PLUGIN_OK uid=65534 no_new_privs=1 seccomp=filter sealed_exec=1 wall_limit=3 output=bounded_mask' in text
+                record['ok'] = 'RAM_PLUGIN_OK uid=65534 no_new_privs=1 engine=bytecode-v1 instruction_budget=4096 wall_limit=3 output=bounded_mask' in text
             elif case == 'off':
                 record['ok'] = 'RAM_PLUGIN_OFF' in text
             elif case == 'missing':
-                record['ok'] = 'RAM_PLUGIN_REJECT missing/unsafe executable' in text
+                record['ok'] = 'RAM_PLUGIN_REJECT missing/unsafe bytecode' in text
             else:
                 match = re.search(r'RAM_PLUGIN_REJECT case='+case+r' signal=(\d+) exit=(-?\d+) timed_out=(\d) bytes=(\d+)', text)
                 if match:
                     sig, code, timeout, size = map(int, match.groups())
                     record.update(signal=sig, exit=code, timed_out=bool(timeout), output_bytes=size)
-                    record['ok'] = ((case == 'forbidden' and sig == 31) or
-                        (case == 'timeout' and (timeout or sig in (9, 24))) or
-                        (case == 'crash' and sig in (4, 5, 11)) or
-                        (case == 'invalid_elf' and code == 126) or
-                        (case == 'malformed' and code == 0 and size == 3856))
+                    record['ok'] = ((case == 'forbidden' and code == 41) or
+                        (case == 'timeout' and code == 43) or
+                        (case == 'crash' and code == 42) or
+                        (case == 'invalid_elf' and code == 41) or
+                        (case == 'malformed' and code == 41))
             RESULT['cases'].append(record)
             if not record.get('ok'):
                 raise RuntimeError('Guest confinement/result check failed')

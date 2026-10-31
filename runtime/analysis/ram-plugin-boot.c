@@ -1,4 +1,4 @@
-/* Trusted RAM-only supervisor. Never opens /dev/mem or enters the IM process. */
+/* Trusted bytecode interpreter/supervisor; never executes native plugin bytes. */
 #define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -6,10 +6,6 @@
 #include <sys/wait.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
-#include <linux/audit.h>
-#include <linux/filter.h>
-#include <linux/seccomp.h>
-#include <linux/memfd.h>
 #include <linux/capability.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -24,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include "ram-plugin.h"
+#include "ram-bytecode.h"
 /* Original firmware glibc 2.25 exposes these versioned stat entry points. */
 #ifdef __aarch64__
 extern int __fxstat(int,int,struct stat *);
@@ -36,28 +32,6 @@ extern int __lxstat(int,const char *,struct stat *);
 #define plugin_lstat(path,st) lstat(path,st)
 #endif
 static int limit(int resource, rlim_t value) { struct rlimit r={value,value};return setrlimit(resource,&r); }
-static int sandbox(void) {
-    struct sock_filter code[]={
-      BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,arch)),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AUDIT_ARCH_AARCH64,1,0), BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL),
-      BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,nr)),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,93,7,0),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,94,6,0),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,64,0,3),
-      BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,args[0])),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,1,3,0), BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,281,2,0), BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL),
-      BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW),
-      BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,args[0])),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,3,0,3),
-      BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,args[4])),
-      BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AT_EMPTY_PATH,0,1),
-      BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW), BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL)};
-    struct sock_fprog program={sizeof code/sizeof code[0],code};
-    if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0)) return -1;
-    if(prctl(PR_SET_SECCOMP,SECCOMP_MODE_FILTER,&program)) return -2;
-    return 0;
-}
 static int close_others(void) {
     DIR *directory=opendir("/proc/self/fd");
     if(!directory)return -1;
@@ -69,7 +43,7 @@ static int close_others(void) {
         if(!*p)continue;
         for(;*p>='0'&&*p<='9';p++) { if(fd>100000000){closedir(directory);return -1;}fd=fd*10+(*p-'0'); }
         if(*p)continue;
-        if(fd!=1&&fd!=3&&fd!=(unsigned)keep)close((int)fd);
+        if(fd!=1&&fd!=(unsigned)keep)close((int)fd);
     }
 }
 static int run(void) {
@@ -79,32 +53,25 @@ static int run(void) {
     if(which==8)return 2;
     unlink(RP_FRAME); /* every failed invocation restores the unobscured camera frame */
     if(which==7){puts("RAM_PLUGIN_OFF");return 0;}
-    errno=0;
-    if(prctl(PR_GET_SECCOMP,0,0,0,0)<0) {
-      dprintf(1,"RAM_PLUGIN_UNSUPPORTED seccomp_query errno=%d\n",errno);return 2;
-    }
     char name[128];snprintf(name,sizeof name,"/simulation/ram-plugin-%s",mode);
     /* Plugin bytes are untrusted; cpio may preserve the build user ownership. */
     int input=open(name,O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);struct stat st;
-    if(input<0 || plugin_fstat(input,&st) || !S_ISREG(st.st_mode) || (st.st_mode&022) || st.st_size<=0 || st.st_size>65536) {
+    if(input<0 || plugin_fstat(input,&st) || !S_ISREG(st.st_mode) || (st.st_mode&022) || st.st_size<=0 || st.st_size>BC_MAX) {
       if(input>=0)close(input);
-      puts("RAM_PLUGIN_REJECT missing/unsafe executable");return 1;
+      puts("RAM_PLUGIN_REJECT missing/unsafe bytecode");return 1;
     }
-    int mem=syscall(SYS_memfd_create,"ram-plugin",MFD_CLOEXEC|MFD_ALLOW_SEALING);
-    if(mem<0){close(input);puts("RAM_PLUGIN_UNSUPPORTED memfd");return 2;}
-    unsigned char bytes[65536];ssize_t got=read(input,bytes,sizeof bytes);close(input);
-    if(got!=st.st_size || write(mem,bytes,got)!=got || fchmod(mem,0555) ||
-       fcntl(mem,F_ADD_SEALS,F_SEAL_SEAL|F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_WRITE)) {close(mem);return 2;}
+    unsigned char bytes[BC_MAX];ssize_t got=read(input,bytes,sizeof bytes);close(input);
+    if(got!=st.st_size)return 2;
     const char *jail="/tmp/ram-plugin-root";
-    if(mkdir(jail,0700) && errno!=EEXIST){close(mem);return 2;}
-    if(plugin_lstat(jail,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077)){close(mem);return 2;}
+    if(mkdir(jail,0700) && errno!=EEXIST){return 2;}
+    if(plugin_lstat(jail,&st)||!S_ISDIR(st.st_mode)||st.st_uid||(st.st_mode&077)){return 2;}
     struct __user_cap_header_struct parent_header={_LINUX_CAPABILITY_VERSION_3,0};
     struct __user_cap_data_struct parent_caps[2]={{0},{0}};
-    if(syscall(SYS_capget,&parent_header,parent_caps)||!(parent_caps[0].effective&(1u<<CAP_KILL))){close(mem);return 2;}
-    int pipefd[2];if(pipe2(pipefd,O_CLOEXEC)){close(mem);return 2;}
+    if(syscall(SYS_capget,&parent_header,parent_caps)||!(parent_caps[0].effective&(1u<<CAP_KILL))){return 2;}
+    int pipefd[2];if(pipe2(pipefd,O_CLOEXEC)){return 2;}
     pid_t pid=fork();if(pid<0)return 2;
     if(pid==0) {
-      if(dup2(pipefd[1],1)<0 || dup2(mem,3)<0 || fcntl(3,F_SETFD,FD_CLOEXEC))_exit(120);
+      if(dup2(pipefd[1],1)<0)_exit(120);
       if(close_others())_exit(120);
       if(limit(RLIMIT_CPU,1)||limit(RLIMIT_AS,16*1024*1024)||limit(RLIMIT_FSIZE,0)||limit(RLIMIT_CORE,0)||limit(RLIMIT_NOFILE,4)||limit(RLIMIT_NPROC,4))_exit(121);
       if(chroot(jail)||chdir("/")||prctl(PR_SET_KEEPCAPS,0,0,0,0))_exit(122);
@@ -114,12 +81,12 @@ static int run(void) {
       struct __user_cap_data_struct caps[2]={{0},{0}};
       if(syscall(SYS_capset,&cap_header,caps)||syscall(SYS_capget,&cap_header,caps))_exit(124);
       if(caps[0].effective||caps[0].permitted||caps[0].inheritable||caps[1].effective||caps[1].permitted||caps[1].inheritable)_exit(124);
-      int restricted=sandbox();
-      if(restricted){int code=errno;_exit((restricted==-1?160:200)+(code>0&&code<40?code:39));}
-      char *argv[]={"ram-plugin",NULL};char *envp[]={NULL};
-      syscall(SYS_execveat,3,"",argv,envp,AT_EMPTY_PATH);_exit(126);
+      if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0))_exit(125);
+      struct rp_frame frame;int result=bc_run(bytes,(size_t)got,&frame);
+      if(result)_exit(result);
+      _exit(write(1,&frame,sizeof frame)==sizeof frame?0:44);
     }
-    close(mem);close(pipefd[1]);fcntl(pipefd[0],F_SETFL,O_NONBLOCK);
+    close(pipefd[1]);fcntl(pipefd[0],F_SETFL,O_NONBLOCK);
     unsigned char data[RP_BYTES+1];size_t used=0;int status=0,finished=0;
     struct timespec now;clock_gettime(CLOCK_MONOTONIC,&now);time_t end=now.tv_sec+3;
     while(!finished) {
@@ -139,6 +106,6 @@ static int run(void) {
     if(out<0)return 2;
     int ok=write(out,data,used)==(ssize_t)used;close(out);
     if(!ok||rename(temporary,RP_FRAME)){unlink(temporary);return 2;}
-    puts("RAM_PLUGIN_OK uid=65534 no_new_privs=1 seccomp=filter sealed_exec=1 wall_limit=3 output=bounded_mask");return 0;
+    puts("RAM_PLUGIN_OK uid=65534 no_new_privs=1 engine=bytecode-v1 instruction_budget=4096 wall_limit=3 output=bounded_mask");return 0;
 }
 void _start(void){int result=run();fflush(stdout);_exit(result);}
