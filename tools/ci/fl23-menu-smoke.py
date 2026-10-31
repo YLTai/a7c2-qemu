@@ -195,6 +195,11 @@ try:
     initial=capture('language')
     PHASE='language_navigation'
     firstboot.select_simplified_chinese(initial,console,capture,lambda:key('DOWN'),wait)
+    # The selector already verified changed and stable LCD after its final key.
+    # Confirm once, then require the known next page instead of a redundant
+    # second full-frame stability pass on the language page.
+    key('ENTER')
+    wait(lambda _:capture('language-confirmed')['firstboot_ui']['page']=='reader',120)
     PHASE='firstboot_navigation'
     for n in range(30):
         step=firstboot.firstboot_step(last_image,console,capture,key,wait,

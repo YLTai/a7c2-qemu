@@ -146,3 +146,46 @@ subsystems, not permissions that can be fixed by disabling isolation. Isolated
 instruction tests could validate branch semantics only. Menu visibility, runtime
 selection, capture-triggered audio requests and actual audio output remain
 unverified for this plugin platform.
+
+## Experimental FL2/FL3 menu capability
+
+The trusted startup broker in `runtime/analysis/fl23-menu-guest.c` is a separate,
+fixed-purpose capability. It does not add native execution, pointers, memory
+instructions or shell access to display bytecode. Request it with
+`A7C2_RAM_PLUGIN=1` and `A7C2_FL23_MENU=1` in a fresh natural-boot QEMU instance,
+with `MENU_BACKUP_SAVE=0` and `A7C2_SETTINGS_PERSIST=0`. Persistent instances,
+restored settings, mock backends, firmware overlays and other firmware identities
+are rejected. Disabling requires a fresh VM with `A7C2_FL23_MENU=0`.
+
+The launcher and broker pin original appFw identity, ELF layout, live private
+file mappings, original bytes and native Backup originals. Only seven fixed AP
+data fields and two fixed Backup bindings are writable. Three data pages lie
+inside RX ELF segments, but their entire pages are non-executable data sections;
+the broker temporarily uses RW without X, then verifies exact original mapping
+permissions. Transaction failures roll back both AP data and Backup bindings;
+uncertain recovery aborts the disposable application process before native init.
+
+`Backup_save=0` is **not** a global native save gate. FL23 additionally uses a
+read-only bind mount for the guest tmpfs Backup file, verifies actual tmpfs and
+read-only flags, and checks its original SHA before and after the transaction.
+Source firmware and persistent settings are not modified or exported. The
+original camera may change native settings in RAM; they disappear with the VM.
+
+The existing framework's fixed `fl23_status` request reads only native bindings
+and hashes three fixed files. It cannot select arbitrary keys, paths or addresses.
+The observer separately records bounded changes of the pinned current-Look model
+following original frames. Binding 10/11 alone is not proof of a selected Look.
+
+[Run 41196866130](https://github.com/YLTai/a7c2-qemu/actions/runs/41196866130)
+verified enabled bindings, seven AP fields after the first original frame, exact
+file hashes, native forced rollback, fresh disabled originals and normal cleanup.
+Original key input completed firstboot and opened MENU with the overlay off.
+[Run 41197921239](https://github.com/YLTai/a7c2-qemu/actions/runs/41197921239)
+also verified same-VM before/after Backup hashes and reached Exposure/Color.
+Creative Look visibility, selection and parameter readback are still under test;
+these discovery runs deliberately remain unsuccessful until those checks exist.
+Use `fl23_only=true` only for navigation diagnostics; final validation must leave
+it false to include Hello World and all baseline/recovery/restart tests.
+
+No CP gamma/routing/converter code is modified. Menu and parameter verification
+will not establish final-photo color processing or real-camera compatibility.
