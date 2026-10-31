@@ -76,8 +76,9 @@ def main():
     manifest = json.loads((base.ROOT / 'sony-assets.json').read_text())
     report = {'schema': 'jiritsu-entry-static/1', 'firmware_executed': False,
               'usb_access': False, 'camera_upload_enabled': False, 'files': []}
-    for name in ('libJiritsu.so', 'libsencore.so', 'libosal_uipc.so', 'libosal_utm.so'):
-        relative = 'menu-root/usr/lib/' + name
+    for suffix in ('lib/libJiritsu.so', 'lib/libsencore.so', 'lib/libosal_uipc.so',
+                   'lib/libosal_utm.so', 'bin/im.elf'):
+        relative = 'menu-root/usr/' + suffix
         if relative not in manifest:
             report['files'].append({'path': relative, 'status': 'not_in_manifest'})
             continue
