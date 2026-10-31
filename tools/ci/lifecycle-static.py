@@ -316,7 +316,7 @@ def main():
             candidates.append((path, data, item))
     for path, data, item in candidates:
         report['elf'].append(item | elf_facts(path, data))
-    encoded = json.dumps(report, indent=2)
+    encoded = json.dumps(report, separators=(',', ':'))
     if len(encoded) > 400000:
         raise ValueError('report_bound_exceeded')
     Path('ci-logs/lifecycle-static.json').write_text(encoded + '\n')
@@ -326,7 +326,10 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
+    except Exception as exc:
         # No firmware strings, host paths, tool output or traceback in public logs.
-        print('LIFECYCLE_STATIC_FAILED; private inputs not exported')
+        codes = {'analysis_tool_failed', 'image_symlink_loop', 'symlink_identity_mismatch',
+                 'input_not_regular', 'original_file_identity_mismatch', 'report_bound_exceeded'}
+        code = str(exc) if str(exc) in codes else type(exc).__name__
+        print('LIFECYCLE_STATIC_FAILED category=' + code + '; private inputs not exported')
         raise SystemExit(1)
