@@ -2,8 +2,10 @@
 """Bounded private-data analysis for GET_FILE2. No firmware execution or USB.
 
 Exports semantic load/compare/call facts, never bytes or disassembly listings.
-Linear provenance is explicitly a candidate, not a path-complete proof.
+Conservative CFG joins discard disagreeing origins. Unsupported operations lose
+their output provenance; facts remain candidates, not a path-complete proof.
 """
+from collections import deque
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +16,10 @@ import subprocess
 ROOT = Path('runtime/analysis')
 FUNCTIONS = ('adj_cmd_set_file_path', 'get_access_filename', 'adj_cmd_get_file2',
              '_ZN10libJiritsu11CFileAccess4statEPKcP13tag_FILE_INFO',
-             '_ZN10libJiritsu11CFileAccess4readEPvm')
+             '_ZN10libJiritsu11CFileAccess4readEPvm',
+             '_Z17AdjustControlFuncPK12SenserPacket',
+             '_ZN24HostCommunicationCommand9DoExecuteEP12SenserPacket',
+             '_ZN24HostCommunicationCommandC1EPK12SenserPacketRK15CommandCodeType')
 
 
 def run(arguments):
@@ -33,13 +38,24 @@ def short(value):
 
 
 def trace(lines, start, end):
-    state = {f'x{i}': f'argument{i}' for i in range(8)} | {'sp': 'frame'}
-    memory = {}
-    facts = []
-    comparison = None
-    for address, operation, operands in lines:
-        if not start <= address < end:
+    initial = {f'x{i}': f'argument{i}' for i in range(8)} | {'sp': 'frame'}
+    instructions = {a: (o, p) for a, o, p in lines if start <= a < end}
+    incoming = {start: initial}
+    pending = deque([start])
+    records = {}
+    iterations = 0
+    while pending:
+        address = pending.popleft()
+        if address not in instructions:
             continue
+        iterations += 1
+        if iterations > 20000:
+            raise ValueError('dataflow_bound')
+        operation, operands = instructions[address]
+        state = dict(incoming[address])
+        comparison = state.pop('$comparison', None)
+        memory = {}
+        facts = []
         get = lambda name: state.get(reg(name), 'unknown')
         value = None
         destination = re.match(r'([wx]\d+|sp)\b', operands)
@@ -53,6 +69,9 @@ def trace(lines, start, end):
             value = 'constant:' + str(int(immediate[2], 0))
         elif operation in ('add', 'sub') and arithmetic:
             offset = int(arithmetic[3], 0) * (1 if operation == 'add' else -1)
+            shift = re.search(r'lsl #?(\d+)', operands)
+            if shift:
+                offset <<= int(shift[1])
             value = short(f'offset({get(arithmetic[2])},{offset})')
         elif operation in ('ldrb', 'ldrh', 'ldr', 'ldrsw') and access:
             offset = int(access[3] or '0', 0)
@@ -104,7 +123,40 @@ def trace(lines, start, end):
             state['x0'] = 'call_result_at:' + hex(address)
             memory.clear()
             comparison = None
-    return facts
+        if operation in ('stp', 'ldp'):
+            pair_registers = re.match(r'([wx]\d+),\s*([wx]\d+)', operands)
+            if operation == 'ldp' and pair_registers:
+                state.pop(reg(pair_registers[1]), None)
+                state.pop(reg(pair_registers[2]), None)
+            indexed = re.search(r'\[sp,\s*#(-?0x[0-9a-f]+|-?\d+)\]!', operands)
+            post = re.search(r'\[sp\],\s*#(-?0x[0-9a-f]+|-?\d+)', operands)
+            update = indexed or post
+            if update:
+                state['sp'] = short(f'offset({get("sp")},{int(update[1], 0)})')
+        if operation in ('adds', 'subs', 'ands', 'cmn'):
+            comparison = None
+        if comparison is not None:
+            state['$comparison'] = comparison
+        records[address] = facts
+        successors = [address + 4]
+        if operation in ('ret', 'br'):
+            successors = []
+        elif operation == 'b' or operation.startswith('b.'):
+            target = re.match(r'([0-9a-f]+)', operands)
+            successors = ([int(target[1], 16)] if target else []) + ([] if operation == 'b' else [address + 4])
+        elif operation in ('cbz', 'cbnz', 'tbz', 'tbnz'):
+            target = re.match(r'[wx]\d+,\s*(?:#\d+,\s*)?([0-9a-f]+)', operands)
+            if target:
+                successors.append(int(target[1], 16))
+        for successor in successors:
+            if successor not in instructions:
+                continue
+            previous = incoming.get(successor)
+            merged = state if previous is None else {k: v for k, v in previous.items() if k in state and state[k] == v}
+            if previous is None or merged != previous:
+                incoming[successor] = dict(merged)
+                pending.append(successor)
+    return [fact for address in sorted(records) for fact in records[address]]
 
 
 def inspect(path, data):
@@ -128,14 +180,17 @@ def inspect(path, data):
             instructions.append((int(m[1], 16), m[2], m[3]))
     output = {'path': str(path.relative_to(ROOT)), 'sha256': hashlib.sha256(data).hexdigest(),
               'function_facts': [], 'relevant_symbols': [], 'table_references': []}
-    for name in FUNCTIONS:
+    if path.name == 'libJiritsu.so':
+        next_start = min(s['va'] for s in symbols if s['va'] > 0xb61c and not s['undefined'])
+        table['registered_callback_0xb61c'] = {'name': 'registered_callback_0xb61c', 'va': 0xb61c, 'size': next_start - 0xb61c, 'undefined': False}
+    for name in (*FUNCTIONS, 'registered_callback_0xb61c'):
         if name not in table:
             continue
         s = table[name]
         facts = trace(instructions, s['va'], s['va'] + s['size'])
         if len(facts) > 220:
             raise ValueError('function_fact_limit')
-        output['function_facts'].append(s | {'facts': facts, 'linear_candidates_only': True})
+        output['function_facts'].append(s | {'facts': facts, 'cfg_candidates_only': True})
     if path.name != 'libJiritsu.so':
         output['relevant_symbols'] = [s for s in symbols if re.search(r'Jiritsu|jiritsu|[Ff]ile|[Aa]djust|[Ss]enser', s['name'])][:100]
     # Resolve only relocations referencing the two reviewed handlers. Values
@@ -189,7 +244,7 @@ if __name__ == '__main__':
         main()
     except Exception as exc:
         allowed = {'tool_failed', 'function_fact_limit', 'relocation_mapping',
-                   'symlink_input', 'identity_mismatch', 'report_limit'}
+                   'symlink_input', 'identity_mismatch', 'report_limit', 'dataflow_bound'}
         code = str(exc) if str(exc) in allowed else type(exc).__name__
         print('GET_FILE2_STATIC_FAILED category=' + code)
         raise SystemExit(1)
