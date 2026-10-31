@@ -102,7 +102,7 @@ dependency, destructor, fork, thread, exit syscall or persistence operation. Its
 only syscalls are openat, fstatfs, read, unlinkat, write and close. All paths and
 operations are fixed. It checks the already-open directory is tmpfs, reads a
 32-byte fixed request containing a fresh 16-byte nonce, unlinks the trigger,
-creates a new 32-byte result exclusively, closes descriptors and returns.
+creates a new 32-byte result exclusively, attempts descriptor closes and returns.
 Writes are bounded to four attempts. It never truncates an existing result or
 follows its symlink. The post-load tmpfs check is only defense in depth: it cannot
 make an earlier unverified upload safe. Model/firmware proof is a required host
@@ -136,3 +136,24 @@ Not verified: real Sony loader ABI/call graph, mount/path/boot behavior, camera
 native execution, recovery after a crash, or real hardware safety. This work is
 high-privilege native execution research, not an ordinary read-only operation or
 a guarantee against bricking. No FL23/color/CP/AP modification is included.
+
+## Recorded offline validation
+
+[Actions 41211167577](https://github.com/YLTai/a7c2-qemu/actions/runs/41211167577)
+passed at `892d8900db30e94ebb561c5ca6b426653d7bb472`, with `firmware=false`.
+All 10 Python fault tests and six AArch64 synthetic-loader cases passed. The
+normal no-firmware QEMU/launcher checks and existing FL23 host fault tests also
+passed; real firmware/menu tests were deliberately skipped in this run.
+Both exact QEMU source and binary cache keys were hits, with receipt validation.
+
+The candidate was built twice with identical bytes: 5704 bytes, SHA-256
+`755e21e951b6c9b4bd03adc81087ad32f3ad5ecef58375ffb40079517c80488e`.
+This is the identity of this reviewed offline build, not permission to upload it.
+The `qemu-build-logs` artifact contains `usb-noop-result.json`; no native payload
+is uploaded as an artifact. Any future build difference needs review and a new
+fixed identity before a future hardware adapter could be enabled.
+
+The first run, 41210949334, failed its positive result assertion despite a
+successful dlopen. It exposed wrong manually specified open flags for AArch64.
+The corrected candidate takes flags and syscall numbers from target headers;
+the passing result was not obtained by relaxing the assertion.
