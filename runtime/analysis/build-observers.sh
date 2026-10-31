@@ -19,6 +19,16 @@ trap 'rm -rf -- "$device_build"' EXIT
 python3 "$analysis_dir/snapshot-observer-sources.py" "$analysis_dir" "$device_build"
 source_dir="$device_build/report/2026-10-17-qemu-native-camera/runtime/analysis"
 vdf_dir="$source_dir/device-models"
+# Source-only build check, independent of any later VM's settings profile.
+MENU_BACKUP_SAVE=0 A7C2_SETTINGS_PERSIST=0 A7C2_SETTINGS_RESTORE= \
+  python3 "$analysis_dir/fl23_preflight.py" "$analysis_dir/menu-root/usr/lib/appFw.so"
+clang --target=aarch64-linux-gnu -O2 -fPIC -mno-outline-atomics \
+  -isystem /usr/aarch64-linux-gnu/include -c "$source_dir/fl23-menu-guest.c" \
+  -o "$device_build/fl23-menu-guest.o"
+clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include \
+  -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
+  "$source_dir/fl23-menu-readback.c" "$analysis_dir/menu-root/usr/lib/libbackup.so" \
+  -Wl,--allow-shlib-undefined "${libraries[@]}" -o "$analysis_dir/menu-root/simulation/fl23-menu-readback"
 common+=("-ffile-prefix-map=$device_build=.")
 clang "${common[@]}" -isystem /usr/aarch64-linux-gnu/include \
   -Wl,-e,_start -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \

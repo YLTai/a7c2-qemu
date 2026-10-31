@@ -45,9 +45,10 @@ def validate_launch_request(env):
     if mode != '1':
         raise Rejected('invalid_menu_request')
     require_volatile_profile(env)
-    # Deliberately fail closed until private CI confirms the actual ELF mappings
-    # and pre-constructor guest adapter. Never silently ignore an enable request.
-    raise Rejected('guest_adapter_unverified')
+    # Enabling is only a request. The launcher must additionally verify the
+    # original ELF and selected initramfs; the guest independently verifies live
+    # mappings, Backup originals and the volatile module-load receipt.
+    return True
 
 
 def _load_segments(data):

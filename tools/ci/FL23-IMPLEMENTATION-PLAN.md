@@ -152,3 +152,33 @@ actual live page permissions. The guest adapter still needs fixed-page mapping
 validation, exclusive initialization ownership, bounded W^X-preserving permission
 transitions, restoration of original permissions, and rollback across Backup and
 AP data. Neither ELF constructor timing nor live menu model refresh is established.
+
+## Guest adapter implementation (pending guest execution)
+
+Run 41192190919 completed successfully: source preflight, real firmware startup,
+Hello World and negative/recovery tests all passed at `3f328ac`.
+
+The next implementation adds `fl23-menu-guest.c` to the trusted observer, invoked
+immediately before original Application_System_Init. Its interface has no caller
+addresses or data; the only boot request is `A7C2_FL23_MENU=1`. It verifies four
+fixed private file mappings (including file offsets/inode and original page
+permissions), seven zero-valued fields and two empty native Backup binding bytes.
+The launcher verifies the original ELF and selected initramfs, forbids firmware
+overlays and persistent instances, rejects both persistence flags, and creates a
+root-only RAM receipt only after a fresh `Backup_save=0` module load succeeds.
+
+The broker uses RX->RW->RX for three verified data pages (never W+X), applies
+seven bounded AP fields and native Backup bindings 10/11, and verifies readback
+and permission restoration. Any failure aborts this guest process before original
+application initialization. Partial writes trigger a joint rollback; an uncertain
+rollback/permission state never reports enabled. `fl23_status` is a fixed read-only
+request in the existing framework that invokes a no-argument native binding
+query. It reports explicitly that selected-look and color effects are unverified.
+
+Host fault injection covers both Backup writes, each of four page acquisition and
+restoration failures, partial mutations and failed rollback. A fixed rollback-only
+test request is available to CI; it always aborts initialization after reverting.
+CI menu tests use disposable VMs, turn the Hello World overlay off, reuse reviewed
+native firstboot navigation, and capture the real MENU frame before navigating
+unreviewed settings. The suite remains failed until menu/selection checks are
+implemented and observed; no synthetic screenshot or forced-screen hook is used.

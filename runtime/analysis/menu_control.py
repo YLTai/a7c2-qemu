@@ -81,6 +81,9 @@ def wait_functional_camera_owner(process):
 
 class VM:
     def __init__(self, command=None, native_display=None,natural_boot=False,usb_net=False,instance=None):
+        from fl23_preflight import validate_launch_request
+        if validate_launch_request(os.environ) and (instance is not None or not natural_boot or command is not None):
+            raise ValueError('FL23 requires a disposable natural-boot VM without a persistent instance')
         if native_display not in (None, 'none', 'gtk', 'sdl'):
             raise ValueError('不支持的原生显示后端')
         self.command = command or ['bash', str(BASE / 'run-menu-probe.sh')]
@@ -264,7 +267,7 @@ class VM:
                     raise ValueError('当前输入通道不支持按下/释放生命周期')
                 camera_input_module().validate_request(command)
             elif (isinstance(command,dict) and set(command)=={'action','case'} and command['action']=='ram_plugin'
-                  and command['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off')
+                  and command['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status')
                   and os.environ.get('A7C2_RAM_PLUGIN')=='1' and not self.mock):
                 pass
             elif command == {'action': 'snapshot'}:

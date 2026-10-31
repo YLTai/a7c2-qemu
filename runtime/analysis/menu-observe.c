@@ -81,6 +81,9 @@ void observe_bt_error_place(void *,unsigned short,unsigned int) __asm__("_ZN8BTU
 #include "device-models/functional-vdf-layout-stage.h"
 #include "device-models/functional-cp-zoom.h"
 typedef unsigned long size_t;
+static void *fl23_application_handle;
+extern int fl23_menu_guest_initialize(unsigned long,void *,void *(*)(void *,const char *),void (*)(const char *,const char *));
+extern void _exit(int) __attribute__((noreturn));
 typedef unsigned long pthread_t;
 static int (*sd_ack_create)(pthread_t *,const void *,void *(*)(void *),void *);
 static int (*sd_ack_detach)(pthread_t);
@@ -6090,6 +6093,14 @@ static void install_create_screen_sentinel(unsigned long base) {
 }
 static void *observe_application_init(void *argument) {
     record("ENTER ", "Application_System_Init");
+    if(getenv("MENU_FL23_MENU")) {
+        int rc=fl23_menu_guest_initialize(appfw_base,fl23_application_handle,real_dlsym,record);
+        if(rc) {
+            char text[80];snprintf(text,sizeof text,"code=%d application_init_called=0",rc);
+            record("FL23_MENU_FATAL ",text);
+            _exit(86); /* Never continue after an uncertain RAM/permission state. */
+        }
+    }
     if(functional_camera_enabled){
         int rc=functional_mpr_memory_enable(record);
         if(!rc)rc=functional_jpeg_codec_enable(record);
@@ -10632,6 +10643,7 @@ void *dlsym(void *handle, const char *name) {
         sd_ack_detach=real_dlsym(handle,"pthread_detach");
         start_headless_osd();
         real_application_init = symbol;
+        fl23_application_handle = handle;
         appfw_base = (unsigned long)symbol - 0x1796918;
         start_live_key_worker();
         if (!getenv("MENU_OBSERVE_SELFTEST")) install_create_screen_sentinel(appfw_base);

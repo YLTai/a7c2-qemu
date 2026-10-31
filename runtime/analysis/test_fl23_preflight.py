@@ -124,18 +124,16 @@ class PreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(Rejected, '^restore_profile$'):
             require_volatile_profile({'A7C2_SETTINGS_RESTORE': '/unused'})
 
-    def test_unverified_enable_never_reports_success(self):
+    def test_enable_is_a_request_not_a_firmware_verification(self):
         validate_launch_request({})
         validate_launch_request({'A7C2_FL23_MENU': '0', 'MENU_BACKUP_SAVE': '1'})
-        with self.assertRaisesRegex(Rejected, '^guest_adapter_unverified$'):
-            validate_launch_request({'A7C2_FL23_MENU': '1'})
+        self.assertTrue(validate_launch_request({'A7C2_FL23_MENU': '1'}))
         with self.assertRaisesRegex(Rejected, '^invalid_menu_request$'):
             validate_launch_request({'A7C2_FL23_MENU': 'yes'})
 
     def test_launcher_rejects_before_loading_guest_dependencies(self):
         launcher = Path(__file__).with_name('qemu-menu-probe.py')
-        for key, expected in ((None, 'guest_adapter_unverified'),
-                              ('MENU_BACKUP_SAVE', 'persistent_profile'),
+        for key, expected in (('MENU_BACKUP_SAVE', 'persistent_profile'),
                               ('A7C2_SETTINGS_PERSIST', 'persistent_profile')):
             env = dict(os.environ, A7C2_FL23_MENU='1', MENU_BACKUP_SAVE='0',
                        A7C2_SETTINGS_PERSIST='0', A7C2_SETTINGS_RESTORE='')
@@ -146,6 +144,17 @@ class PreflightTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, '')
             self.assertIn('fl23_preflight.Rejected: '+expected, result.stderr)
+
+    def test_controller_refuses_persistent_or_mock_fl23_instances(self):
+        from menu_control import VM
+        with patch.dict(os.environ, {'A7C2_FL23_MENU':'1', 'MENU_BACKUP_SAVE':'0',
+                                     'A7C2_SETTINGS_PERSIST':'0', 'A7C2_SETTINGS_RESTORE':''}):
+            for args in ({'instance':object(),'natural_boot':True},
+                         {'natural_boot':False},
+                         {'command':['not-executed'],'natural_boot':True}):
+                with self.assertRaisesRegex(ValueError,'disposable'):
+                    VM(**args)
+            self.assertFalse(VM(natural_boot=True).status()['settings_persistent'])
 
 
 if __name__ == '__main__':

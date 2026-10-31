@@ -126,6 +126,8 @@ jobs:
           python3 -m unittest discover -s runtime/analysis -p test_fl23_preflight.py -v
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-transaction.c -o "$RUNNER_TEMP/fl23-transaction-test"
           "$RUNNER_TEMP/fl23-transaction-test"
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-guest.c -o "$RUNNER_TEMP/fl23-guest-test"
+          "$RUNNER_TEMP/fl23-guest-test"
       - name: Install guest helper cross compiler
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         run: |
@@ -168,6 +170,12 @@ jobs:
         env:
           A7C2_SPARSE_RAM: '1'
         run: python3 tools/ci/ram-plugin-smoke.py
+      - name: Real guest FL23 volatile menu tests
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        timeout-minutes: 35
+        env:
+          A7C2_SPARSE_RAM: '1'
+        run: python3 tools/ci/fl23-menu-smoke.py
       - name: Upload only real screenshot and result
         uses: actions/upload-artifact@v4
         if: always() && github.event_name == 'workflow_dispatch' && inputs.firmware
@@ -178,6 +186,8 @@ jobs:
             ci-firmware-evidence/firmware-screen.png
             ci-firmware-evidence/plugin-result.json
             ci-firmware-evidence/plugin-*.png
+            ci-firmware-evidence/fl23-result.json
+            ci-firmware-evidence/fl23-*.png
           retention-days: 7
           if-no-files-found: ignore
       - name: Upload only build verification logs

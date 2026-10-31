@@ -535,10 +535,13 @@ def run_live(proc, out, descriptor, display_capture=None, sd_export=None, networ
                 if input_session is not None:result['input_state']=input_session.status()
                 if late_passive is not None:result['post_shutter_observation']=late_passive
             elif (action == 'ram_plugin' and set(request) == {'action','case'}
-                  and request['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off')
+                  and request['case'] in ('hello','malformed','crash','timeout','forbidden','invalid_elf','missing','off','fl23_status')
                   and os.environ.get('A7C2_RAM_PLUGIN') == '1'):
                 mode=request['case']
-                output=live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
+                if mode=='fl23_status':
+                    output=live_serial('/simulation/fl23-menu-readback; echo RAM_PLUGIN_RC=$?')
+                else:
+                    output=live_serial('RAM_PLUGIN_CASE='+mode+' /simulation/ram-plugin-boot; echo RAM_PLUGIN_RC=$?')
                 result={'type':'ram_plugin','case':mode,'output':output.decode('utf-8','replace')[-2048:]}
             elif action == 'snapshot' and set(request) == {'action'}:
                 try:
