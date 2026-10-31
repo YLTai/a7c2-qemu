@@ -62,6 +62,17 @@ class ProvenanceFixtures(unittest.TestCase):
         spec.loader.exec_module(module)
         return module.trace(lines, 0, max(row[0] for row in lines) + 4)
 
+    def test_noreturn_does_not_poison_success_path(self):
+        facts = self.trace([(0, 'mov', 'x21, x2'),
+                            (4, 'cbz', 'x0, 14'),
+                            (8, 'mov', 'x21, x1'),
+                            (12, 'bl', '100 <__cxa_throw@plt>'),
+                            (16, 'mov', 'x21, x0'),
+                            (20, 'mov', 'x2, x21'),
+                            (24, 'bl', '104 <read@plt>'), (28, 'ret', '')])
+        call = next(f for f in facts if f['kind'] == 'call' and f['symbol']=='read@plt')
+        self.assertEqual(call['arguments_candidate']['x2'], 'argument2')
+
     def test_indirect_call_tracks_page_relative_slot(self):
         facts = self.trace([(0, 'adrp', 'x19, 1000 <page>'),
                             (4, 'add', 'x19, x19, #0x20'),

@@ -119,7 +119,6 @@ def trace(lines, start, end):
             if target:
                 facts.append({'at': address, 'kind': 'conditional', 'condition': operation[2:],
                               'target': int(target[1], 16), 'comparison': comparison})
-            comparison = None
         elif operation in ('cbz', 'cbnz', 'tbz', 'tbnz'):
             check = re.match(r'([wx]\d+),\s*(?:#(\d+),\s*)?([0-9a-f]+)', operands)
             if check:
@@ -163,7 +162,9 @@ def trace(lines, start, end):
             state['$comparison'] = comparison
         records[address] = facts
         successors = [address + 4]
-        if operation in ('ret', 'br'):
+        noreturn = operation == 'bl' and re.search(
+            r'<(?:_Unwind_Resume|__cxa_throw|__stack_chk_fail|abort|_exit)(?:@[^>]+)?>', operands)
+        if operation in ('ret', 'br') or noreturn:
             successors = []
         elif operation == 'b' or operation.startswith('b.'):
             target = re.match(r'([0-9a-f]+)', operands)
