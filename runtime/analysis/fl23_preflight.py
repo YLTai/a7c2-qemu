@@ -143,9 +143,22 @@ def audit_original(data):
 
 def inspect_original(data):
     # Identity check precedes ELF inspection; no user-selectable digest bypass.
-    if hashlib.sha256(data).hexdigest() != SOURCE_SHA256:
-        raise Rejected('source_identity')
-    return _resolve(data, _load_segments(data), FIELDS)
+    audit = audit_original(data)
+    return _require_data_pages(audit)
+
+
+def _require_data_pages(audit):
+    # RX PT_LOAD can contain non-executable rodata. This proves original ELF
+    # layout only; the future guest adapter must verify actual maps and perform
+    # bounded RX->RW->RX transitions, never W+X, before writing those pages.
+    if not audit.get('section_table_valid'):
+        raise Rejected('section_metadata')
+    fields = audit['fields']
+    if len(fields) != len(FIELDS) or any(
+            not f['elf_readable'] or not f['unique_allocated_section'] or
+            not f['nonexec_data_page_4096'] for f in fields):
+        raise Rejected('field_permissions')
+    return fields
 
 
 def main():
@@ -170,7 +183,9 @@ def main():
         return 1
     # Only fixed-schema status is public; no memory contents, file path or maps.
     print(json.dumps({'passed': True, 'scope': 'original_elf_menu_data_only',
-                      'fields_verified': len(fields), 'guest_enabled': False}))
+                      'fields_verified': len(fields), 'guest_enabled': False,
+                      'fields_requiring_permission_transition': sum(
+                          not f['elf_writable'] or f['elf_executable'] for f in fields)}))
     return 0
 
 

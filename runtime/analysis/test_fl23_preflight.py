@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from fl23_preflight import (Rejected, _load_segments, _resolve, inspect_original,
                             require_volatile_profile, validate_launch_request,
-                            audit_original, _section_audit)
+                            audit_original, _section_audit, _require_data_pages, FIELDS)
 
 
 def elf(segments):
@@ -58,6 +58,19 @@ class PreflightTests(unittest.TestCase):
             struct.pack_into('<IIQQQQIIQQ', data, 256, 0, 1, 6, 0x10000,
                              8192, 16, 0, 0, 1, 0)
             self.assertFalse(_section_audit(data, mappings)['fields'][0]['nonexec_data_page_4096'])
+
+    def test_rx_segment_requires_positive_nonexec_data_page_proof(self):
+        fields = [dict(id=name, elf_readable=True, elf_executable=True,
+                       unique_allocated_section=True, nonexec_data_page_4096=True)
+                  for name, _, _, _ in FIELDS]
+        self.assertEqual(_require_data_pages({'section_table_valid': True, 'fields': fields}), fields)
+        for property_name in ('elf_readable', 'unique_allocated_section', 'nonexec_data_page_4096'):
+            invalid = [dict(field) for field in fields]
+            invalid[-1][property_name] = False
+            with self.assertRaisesRegex(Rejected, '^field_permissions$'):
+                _require_data_pages({'section_table_valid': True, 'fields': invalid})
+        with self.assertRaisesRegex(Rejected, '^section_metadata$'):
+            _require_data_pages({'section_table_valid': False})
 
     def test_segment_mapping_is_not_a_global_delta(self):
         data = elf([(512, 0x9000, 512, 1024, 6), (2048, 0x18000, 512, 512, 4)])

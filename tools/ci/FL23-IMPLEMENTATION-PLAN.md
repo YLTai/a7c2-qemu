@@ -126,3 +126,29 @@ sizes, ELF permissions, and non-executable section/page classification. It never
 prints firmware contents and does not relax the launch or write gate. Determine
 whether the fields occupy data-only pages within an executable PT_LOAD segment
 before designing a bounded permission transition. No W+X mapping is authorized.
+
+## Verified original ELF mapping facts
+
+[Run 41191873237](https://github.com/YLTai/a7c2-qemu/actions/runs/41191873237)
+at `0306bd5c3a7b4feff4d3afff104c607de91de40e` passed nine host tests and
+the transaction sanitizer harness, restored the same exact QEMU caches, and
+confirmed all seven original fields through the read-only audit. The preflight
+still intentionally rejected the RX PT_LOAD segments, so guest tests were skipped.
+
+| Fixed field | Relative ELF VA | PT_LOAD flags | Entire 4 KiB page is non-executable data |
+| --- | --- | --- | --- |
+| selection | `0x4b2ed19` | RX | yes |
+| FL2 Fade | `0x4b3b544` | RX | yes |
+| FL3 Fade | `0x4b3b54c` | RX | yes |
+| FL2 binding | `0x4b4a5e4` | RX | yes |
+| FL3 binding | `0x4b4a5ec` | RX | yes |
+| FL2 visible | `0x59992ca` | RW | yes |
+| FL3 visible | `0x5999382` | RW | yes |
+
+The follow-up preflight accepts the positively verified non-executable data-page
+classification, including data pages in RX segments. This changes only source
+validation: guest enabling remains rejected. These ELF flags are not proof of
+actual live page permissions. The guest adapter still needs fixed-page mapping
+validation, exclusive initialization ownership, bounded W^X-preserving permission
+transitions, restoration of original permissions, and rollback across Backup and
+AP data. Neither ELF constructor timing nor live menu model refresh is established.
