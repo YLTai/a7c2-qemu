@@ -99,6 +99,13 @@ def inspect(path, data):
             continue
         owners = [s['name'] for s in symbols.values() if not s['undefined'] and s['va'] <= address < s['va'] + s['size']]
         result['process_direct_calls'].append({'at': address, 'target': target[2], 'owners': owners})
+        if path.name == 'im.elf' and re.match(r'(waitpid|signal|fork)@', target[2]):
+            # A bounded local window, explicitly not a recovered function/CFG.
+            # Constants can narrow review; unknown origins remain unknown.
+            window = base.trace(instructions, address - 80, address + 4)
+            result.setdefault('im_process_windows', []).append({
+                'call_at': address, 'function_boundary_known': False,
+                'facts': window})
     if len(result['selected_functions']) > 24 or len(result['process_direct_calls']) > 300:
         raise ValueError('scope_limit')
     return result
