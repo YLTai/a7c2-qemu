@@ -9,6 +9,8 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import struct
+from jiritsu_dispatch import follow
 
 spec = importlib.util.spec_from_file_location('get_file2_static', Path(__file__).with_name('get-file2-static.py'))
 base = importlib.util.module_from_spec(spec)
@@ -42,6 +44,36 @@ def inspect(path, data):
               'needed': needed, 'process_symbols': [s for n, s in symbols.items() if PROCESS.search(n)],
               'selected_functions': [], 'process_direct_calls': [],
               'complete_callgraph': False, 'sony_reaper_contract_verified': False}
+    if path.name == 'libJiritsu.so':
+        phoff = struct.unpack_from('<Q', data, 32)[0]
+        phsize, phnum = struct.unpack_from('<HH', data, 54)
+        segments = [struct.unpack_from('<II6Q', data, phoff + i * phsize) for i in range(phnum)]
+        def read_integer(address, size, signed):
+            for segment in segments:
+                if segment[0] == 1 and segment[3] <= address and address + size <= segment[3] + segment[5]:
+                    offset = segment[2] + address - segment[3]
+                    return int.from_bytes(data[offset:offset + size], 'little', signed=signed)
+            raise ValueError('table_outside_file')
+        code = {a: (op, args) for a, op, args in instructions}
+        result['callback_switch'] = []
+        for selector in range(1, 21):
+            try:
+                edge = follow(code, 0xb61c, selector, read_integer)
+                if edge['target'] not in code:
+                    raise ValueError('invalid_switch_target')
+                edge['direct_call_candidates'] = []
+                for address in range(edge['target'], edge['target'] + 64, 4):
+                    op, operands = code.get(address, ('missing', ''))
+                    if op in ('bl', 'b'):
+                        target = re.match(r'([0-9a-f]+) <([^>]+)>', operands)
+                        if target:
+                            edge['direct_call_candidates'].append({'at': address, 'symbol': target[2]})
+                        break
+                    if op in ('ret', 'br', 'missing') or op.startswith('b.'):
+                        break
+                result['callback_switch'].append(edge)
+            except (KeyError, ValueError) as error:
+                result['callback_switch'].append({'selector': selector, 'unresolved': type(error).__name__})
     for name, s in symbols.items():
         if s['undefined'] or not SELECT.search(name):
             continue
