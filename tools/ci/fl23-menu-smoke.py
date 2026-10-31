@@ -96,6 +96,31 @@ def close():
     if not ok:raise RuntimeError('close_incomplete')
     vm=None
 
+def negative_rollback():
+    global vm
+    os.environ.update(A7C2_FL23_MENU='1',A7C2_FL23_NEGATIVE='rollback')
+    try:
+        vm=VM(native_display='none',natural_boot=True,usb_net=True,instance=None)
+        vm.start();deadline=time.monotonic()+600;next_progress=0
+        while time.monotonic()<deadline:
+            text=console()
+            if 'FL23_MENU_FATAL' in text:
+                if ('FL23_MENU_ROLLBACK complete=1' not in text or
+                        'FL23_MENU_FATAL code=11 application_init_called=0' not in text or
+                        'FL23_MENU_READY' in text):
+                    raise RuntimeError('negative_rollback_unverified')
+                RESULT['native_rollback_verified']=True
+                close();return
+            if vm.status()['state'] in ('error','faulted','exited','disconnected'):
+                raise RuntimeError('negative_boot_failed_before_broker')
+            if time.monotonic()>=next_progress:
+                print(json.dumps({'phase':PHASE,'state':vm.status()['state']}),flush=True)
+                next_progress=time.monotonic()+30
+            time.sleep(.5)
+        raise TimeoutError('negative_broker_wait')
+    finally:
+        os.environ.pop('A7C2_FL23_NEGATIVE',None)
+
 try:
     PHASE='enabled_boot';start(True)
     initial=capture('language')
@@ -115,7 +140,8 @@ try:
     # A real current menu image is required before selecting any unreviewed row.
     # Subsequent iterations add the reviewed navigation and selection assertions.
     RESULT['menu_navigation_pending']=True
-    PHASE='disabled_restart';close();start(False);close()
+    PHASE='negative_rollback';close();negative_rollback()
+    PHASE='disabled_restart';start(False);close()
     RESULT['fresh_vm_bindings_restored']=True
 except Exception as error:
     RESULT.update(failed_phase=PHASE,error_type=type(error).__name__)

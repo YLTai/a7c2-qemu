@@ -1202,6 +1202,7 @@ static void record(const char *prefix, const char *name) {
        keeps them even when diag.sh never runs. */
     if (prefix) {
         static const char *mirrored[] = {
+            "FL23_MENU_",
             "FULL_HDMIPIN_",
             "FULL_OSDPIN_",
             "FULL_AUDIO_", "FULL_BB_SET_MODE_", "FULL_BB_MODE_",

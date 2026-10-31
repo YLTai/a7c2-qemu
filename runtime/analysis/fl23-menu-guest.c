@@ -13,6 +13,14 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include "fl23-menu-transaction.h"
+#ifdef __aarch64__
+/* Match original glibc 2.25, not the build sysroot's newer stat/C23 aliases. */
+extern int __fxstat(int,int,struct stat *);
+#define guest_fstat(fd,st) __fxstat(0,fd,st)
+#else
+#define guest_fstat(fd,st) fstat(fd,st)
+#endif
+extern int guest_scan(const char *,const char *,...) __asm__("sscanf");
 
 static const uintptr_t offsets[7] = {0x4b2ed19,0x4b3b544,0x4b3b54c,
     0x4b4a5e4,0x4b4a5ec,0x59992ca,0x5999382};
@@ -46,7 +54,7 @@ static int volatile_receipt(void) {
     char text[3]={0};struct stat st;
     int fd=open("/tmp/fl23-backup-volatile",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     if(fd<0)return -1;
-    int bad=fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_uid ||
+    int bad=guest_fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_uid ||
         (st.st_mode&022) || st.st_size!=2 || read(fd,text,3)!=2 || memcmp(text,"0\n",2);
     if(close(fd))bad=1;
     return bad?-1:0;
@@ -58,13 +66,13 @@ static int mapping_check(struct guest_state *s) {
 #else
     struct stat st;int fd=open("/usr/lib/appFw.so",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     if(fd<0)return -1;
-    int bad=fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return -1;
+    int bad=guest_fstat(fd,&st)||!S_ISREG(st.st_mode);close(fd);if(bad)return -1;
     FILE *f=fopen("/proc/self/maps","r");if(!f)return -1;
     char line[1024],path[512],mode[5];unsigned seen[4]={0};
     while(fgets(line,sizeof line,f)) {
         unsigned long start,end,fileoff,inode;unsigned major,minor;
         if(!strchr(line,'\n')){bad=1;break;}
-        if(sscanf(line,"%lx-%lx %4s %lx %x:%x %lu %511s",
+        if(guest_scan(line,"%lx-%lx %4s %lx %x:%x %lu %511s",
                   &start,&end,mode,&fileoff,&major,&minor,&inode,path)!=8)continue;
         for(unsigned i=0;i<4;i++) {
             uintptr_t page=s->base+pages[i];

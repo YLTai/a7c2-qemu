@@ -182,3 +182,10 @@ CI menu tests use disposable VMs, turn the Hello World overlay off, reuse review
 native firstboot navigation, and capture the real MENU frame before navigating
 unreviewed settings. The suite remains failed until menu/selection checks are
 implemented and observed; no synthetic screenshot or forced-screen hook is used.
+
+The first adapter CI (`41193122867` at `046ce9e`) passed all host checks but
+failed guest-helper linkage before any guest boot. The original glibc requires
+`__fxstat(0,...)`, as already used by the display plugin; the adapter is corrected
+to that ABI and the legacy `sscanf` symbol instead of build-sysroot C23 aliases.
+FL23 diagnostic prefixes are now mirrored to the bounded console channel, so
+startup failures and rollback can be inspected without publishing private logs.
