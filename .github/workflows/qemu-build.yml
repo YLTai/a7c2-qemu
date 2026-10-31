@@ -6,6 +6,10 @@ on:
         description: Run real firmware import and headless smoke
         type: boolean
         default: false
+      fl23_only:
+        description: FL23 diagnostic iteration only (final validation must use false)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -151,13 +155,13 @@ jobs:
           A7C2_SETTINGS_PERSIST: '0'
         run: python3 runtime/analysis/fl23_preflight.py runtime/analysis/menu-root/usr/lib/appFw.so
       - name: Real headless firmware boot and screenshot
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware && !inputs.fl23_only
         timeout-minutes: 20
         env:
           A7C2_SPARSE_RAM: '1'
         run: python3 tools/ci/firmware-headless-smoke.py
       - name: Verify bytecode interpreter and display parser logic
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware && !inputs.fl23_only
         run: |
           python3 runtime/analysis/build-ram-bytecode.py "$RUNNER_TEMP/bytecode-fixtures"
           cc -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-ram-bytecode.c -o "$RUNNER_TEMP/ram-bytecode-test"
@@ -165,7 +169,7 @@ jobs:
           cc -O2 -Wall -Wextra -Werror runtime/analysis/test-ramfb-viewer.c -o "$RUNNER_TEMP/ramfb-unit-test"
           "$RUNNER_TEMP/ramfb-unit-test"
       - name: Real guest RAM plugin and recovery tests
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware && !inputs.fl23_only
         timeout-minutes: 30
         env:
           A7C2_SPARSE_RAM: '1'
