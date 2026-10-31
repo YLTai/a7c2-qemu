@@ -175,6 +175,7 @@ jobs:
         run: |
           python3 tools/ci/lifecycle-static.py
           python3 tools/ci/get-file2-static.py
+          python3 tools/ci/jiritsu-entry-static.py
       - name: Verify FL23 original ELF identity and menu data mappings
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         env:
@@ -242,6 +243,7 @@ jobs:
             ci-logs/sd-route-build.json
             ci-logs/lifecycle-static.json
             ci-logs/get-file2-static.json
+            ci-logs/jiritsu-entry-static.json
             source/ci-build-receipt.json
             source/build-programs.sha256
           retention-days: 7
