@@ -3,7 +3,7 @@ set -euo pipefail
 root=$(pwd)
 out=$(mktemp -d "${RUNNER_TEMP:?}/usb-noop.XXXXXX")
 trap 'rm -rf "$out"' EXIT
-python3 -m unittest discover -s tools/usb-noop -p test_noop.py -v
+python3 -m unittest discover -s tools/usb-noop -p 'test_*.py' -v
 flags=(-shared -nostdlib -fPIC -fno-stack-protector -fno-builtin
        -fvisibility=hidden -O2 -Wall -Wextra -Werror
        -Wl,--build-id=none,-z,max-page-size=4096,-z,noexecstack,-z,relro,-z,now,-init,_init)
