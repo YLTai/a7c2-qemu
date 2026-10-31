@@ -46,6 +46,15 @@ def command(case):
     reply=wait(lambda s:bool(s['plugin_result']),90)['plugin_result']
     if reply['case']!=case:raise RuntimeError('wrong_reply')
     return reply['output']
+def originals():
+    text=command('fl23_status')
+    expected={'/usr/lib/appFw.so':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b',
+              '/setting/Backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47',
+              '/seed-backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47'}
+    found=dict((path,digest) for digest,path in re.findall(r'(?m)^([0-9a-f]{64})\s+(/usr/lib/appFw\.so|/setting/Backup\.bin|/seed-backup\.bin)\r?$',text))
+    if found!=expected:raise RuntimeError('original_hash_changed')
+    return True
+
 def capture(label):
     before=(idle()['snapshot'] or {}).get('number',0)
     vm.enqueue({'action':'snapshot'})
@@ -86,26 +95,26 @@ def close():
         if not ok:raise RuntimeError('close_failed')
         vm=None
 try:
-    start();phase='baseline';result['ui_before']=ui('before')
+    start();phase='baseline';result['original_hashes_before']=originals();result['ui_before']=ui('before')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('stale_request')
     phase='native_suite';text=command('sd_suite')
     result['mount_verified']=bool(re.search(r'SD_ROUTE_MOUNT fixture=tmpfs readonly=1 path=/tmp/sd-route/card',text))
     result['stale_session_rejected']='SD_ROUTE_STALE rejected=1' in text
-    pattern=r'SD_ROUTE case=([a-z_]+) passed=(\d) entry_ms=(\d+) ticks=(\d+) exit=(-?\d+) signal=(\d+) timeout=(\d) spawn_error=(\d+) duplicates=(\d+) constrained=(\d) reaped=(\d) exec_ready=(\d) preload_ready=(\d) detached=(\d) ownership_lost=(\d) signals=(\d+) load_error=(\d+) input_mode=(\d+)'
-    names=['case','passed','entry_ms','ticks','exit','signal','timeout','spawn_error','duplicates','constrained','reaped','exec_ready','preload_ready','detached','ownership_lost','signals','load_error','input_mode']
+    pattern=r'SD_ROUTE case=([a-z_]+) passed=(\d) entry_ms=(\d+) ticks=(\d+) exit=(-?\d+) signal=(\d+) timeout=(\d) spawn_error=(\d+) duplicates=(\d+) constrained=(\d) reaped=(\d) exec_ready=(\d) preload_ready=(\d) detached=(\d) ownership_lost=(\d) signals=(\d+) load_error=(\d+) input_mode=(\d+) active_ticks=(\d+)'
+    names=['case','passed','entry_ms','ticks','exit','signal','timeout','spawn_error','duplicates','constrained','reaped','exec_ready','preload_ready','detached','ownership_lost','signals','load_error','input_mode','active_ticks']
     result['cases']=[dict(zip(names,[r[0]]+list(map(int,r[1:])))) for r in re.findall(pattern,text)]
     result['native_failure_stages']=re.findall(r'SD_ROUTE_FAILURE stage=([a-z_]+) errno=(\d+) case=([a-z_]+)',text)
     result['suite_return_codes']=[int(v) for v in re.findall(r'SD_ROUTE_RC=(\d+)',text)]
     if not result['mount_verified'] or not result['stale_session_rejected'] or len(result['cases'])!=20 or not all(r['passed'] for r in result['cases']) or 'SD_ROUTE_SUITE passed=1' not in text or 'SD_ROUTE_RC=0' not in text:raise RuntimeError('native_suite_failed')
-    phase='post_fault_ui';result['ui_after']=ui('after')
+    phase='post_fault_ui';result['original_hashes_after']=originals();result['ui_after']=ui('after')
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('residue')
     close();phase='new_vm';start()
     if 'SD_ROUTE_CLEAN=1' not in command('sd_clean'):raise RuntimeError('new_vm_residue')
-    result['new_vm_no_autoexec']=True;result['new_vm_ui']=ui('restart')
+    result['new_vm_original_hashes']=originals();result['new_vm_no_autoexec']=True;result['new_vm_ui']=ui('restart')
     result['passed']=True
 except Exception as exc:
     result.update(failed_phase=phase,error_type=type(exc).__name__)
-    allowed={'guest_unhealthy','guest_wait','expected_original_language_screen','original_ui_no_change','original_ui_not_restored','native_suite_failed','stale_request','residue','new_vm_residue','persistent_settings','overlay_off'}
+    allowed={'guest_unhealthy','guest_wait','expected_original_language_screen','original_ui_no_change','original_ui_not_restored','native_suite_failed','stale_request','residue','new_vm_residue','persistent_settings','overlay_off','original_hash_changed'}
     result['reason']=str(exc) if str(exc) in allowed else 'other'
     if vm:
         state=vm.status()

@@ -34,7 +34,8 @@ static int sr_hash(int fd, const char *expected) {
     if(n<0)return -1;
     fl23_sha_final(&ctx,digest);
     for(int i=0;i<32;i++) snprintf(hex+2*i,3,"%02x",digest[i]);
-    return strcmp(hex,expected) || lseek(fd,0,SEEK_SET) ? -1:0;
+    if(strcmp(hex,expected))return -2;
+    return lseek(fd,0,SEEK_SET) ? -1:0;
 }
 static int sr_card(int readonly) {
     struct stat st;

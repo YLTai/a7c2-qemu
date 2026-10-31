@@ -16,8 +16,8 @@
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t wake=PTHREAD_COND_INITIALIZER;
 static int pending,busy,done,stop,duplicate,exit_code,term_signal,timed_out,spawn_error;
-static unsigned heartbeat;
-static int eject_live,detached,steal_child,ownership_lost,signal_attempts;
+static unsigned heartbeat,active_ticks;
+static int eject_live,detached,steal_child,ownership_lost,signal_attempts,other_reaped;
 static const char *fixture="normal";
 static char output[96];
 static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec/1e9;}
@@ -67,8 +67,10 @@ static void supervise(void) {
         void *reaped_pid=NULL;
         if(pthread_create(&reaper,NULL,other_reaper,&pid)||pthread_join(reaper,&reaped_pid)
            ||(pid_t)(intptr_t)reaped_pid!=pid)spawn_error=111;
+        else other_reaped=1;
     }
     fcntl(pipes[0],F_SETFL,O_NONBLOCK);
+    pthread_mutex_lock(&lock);unsigned pulse_start=heartbeat;pthread_mutex_unlock(&lock);
     size_t used=0;int status=0,reaped=0;
     while(!reaped) {
         ssize_t n=read(pipes[0],output+used,sizeof output-1-used);if(n>0)used+=(size_t)n;
@@ -83,6 +85,7 @@ static void supervise(void) {
         pid_t got=waitpid(pid,&status,WNOHANG);
         if(got==pid){reaped=1;break;}
         if(got<0 && errno!=EINTR){spawn_error=110;ownership_lost=1;break;}
+        pthread_mutex_lock(&lock);active_ticks=heartbeat-pulse_start;pthread_mutex_unlock(&lock);
         if(now()>=deadline){timed_out=1;break;}
         struct pollfd p={pipes[0],POLLIN,0};poll(&p,1,10);
     }
@@ -139,7 +142,7 @@ static int prepare(const char *name) {
     if(!strcmp(name,"eject_live"))selected="constructor_hang";
     fixture=selected;
     eject_live=!strcmp(name,"eject_live");detached=0;
-    steal_child=!strcmp(name,"ownership_lost");ownership_lost=0;signal_attempts=0;
+    steal_child=!strcmp(name,"ownership_lost");ownership_lost=0;signal_attempts=0;other_reaped=0;active_ticks=0;
     char source[160];snprintf(source,sizeof source,"/simulation/sd-route-%s.so",selected);
     if(strcmp(name,"missing_file")) {
         if(!strcmp(name,"symlink"))ok|=symlinkat(source,card,"plugin.so");
@@ -194,19 +197,20 @@ static int one(const char *name) {
     if(disabled)passed&=!done && !output[0] && !exec_ready && !preload_ready;
     else if(!strcmp(name,"normal"))passed&=!spawn_error && exit_code==0 && !term_signal && !timed_out
         && exec_ready && preload_ready && constrained && strstr(output,"HELLO\n")!=NULL;
-    else if(!strcmp(name,"ownership_lost"))passed&=ownership_lost && spawn_error==110
+    else if(!strcmp(name,"ownership_lost"))passed&=ownership_lost && other_reaped && spawn_error==110
         && signal_attempts==0 && exec_ready && preload_ready && constrained;
     else if(strstr(name,"crash"))passed&=!spawn_error && term_signal==SIGSEGV && exit_code==-1
         && constrained && exec_ready && preload_ready && !timed_out && !signal_attempts;
     else if(strstr(name,"hang")||!strcmp(name,"eject_live"))passed&=!spawn_error && term_signal==SIGKILL
-        && exit_code==-1 && constrained && exec_ready && preload_ready && timed_out && signal_attempts==2;
+        && exit_code==-1 && constrained && exec_ready && preload_ready && timed_out && signal_attempts==2 && active_ticks>20;
     else if(!strcmp(name,"exec_denied")||!strcmp(name,"noexec"))passed&=spawn_error==EACCES
         && exit_code==-1 && !exec_ready && !preload_ready && !constrained && !timed_out;
     else if(!strcmp(name,"missing_card")||!strcmp(name,"ejected"))passed&=spawn_error==101
         && exit_code==-1 && !exec_ready && !preload_ready && !constrained && !timed_out;
     else {
         int expected=!strcmp(name,"bad_version")?22:!strcmp(name,"bad_hash")?24:
-            (!strcmp(name,"missing_file")||!strcmp(name,"symlink")||!strcmp(name,"bad_elf")||!strcmp(name,"oversize"))?23:-1;
+            !strcmp(name,"missing_file")?23:!strcmp(name,"symlink")?34:
+            !strcmp(name,"bad_elf")?36:!strcmp(name,"oversize")?35:-1;
         passed&=expected>0 && !spawn_error && exit_code==expected && !term_signal
             && exec_ready && !preload_ready && !constrained && !timed_out;
     }
@@ -216,7 +220,7 @@ static int one(const char *name) {
     char *load=strstr(output,"LOAD_ERROR="),*mode=strstr(output,"INPUT_MODE=");
     if(load)sr_scan(load,"LOAD_ERROR=%d",&load_error);
     if(mode)sr_scan(mode,"INPUT_MODE=%d",&input_mode);
-    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d detached=%d ownership_lost=%d signals=%d load_error=%d input_mode=%d\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready,detached,ownership_lost,signal_attempts,load_error,input_mode);
+    printf("SD_ROUTE case=%s passed=%d entry_ms=%u ticks=%u exit=%d signal=%d timeout=%d spawn_error=%d duplicates=%d constrained=%d reaped=%d exec_ready=%d preload_ready=%d detached=%d ownership_lost=%d signals=%d load_error=%d input_mode=%d active_ticks=%u\n",name,passed,(unsigned)(returned*1000),ticks,exit_code,term_signal,timed_out,spawn_error,duplicate,constrained,!spawn_error&&!disabled,exec_ready,preload_ready,detached,ownership_lost,signal_attempts,load_error,input_mode,active_ticks);
     fflush(stdout);
     unlink(SR_ROOT "/enable");
     int card=sr_card(1);if(card>=0){close(card);if(umount(SR_CARD))return -1;}

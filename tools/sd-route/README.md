@@ -106,3 +106,22 @@ by the existing Actions secret, never stored in repository/cache/artifacts.
 QEMU exact cache logic and the approved bwrap profile are unchanged. This stage
 adds no real-device command. See the final result/build receipts for tested
 commit, actual outcomes and limitations; source code alone is not a passing test.
+
+## Failure assertions and trusted code
+
+The runner rejects version mismatch with 22, a missing plugin with 23, hash
+mismatch with 24, a symlink with 34, size violation with 35 and invalid ELF with
+36. IO/permission failures have separate codes and cannot satisfy those tests.
+Each pre-load rejection requires EXEC_READY but forbids PRELOAD_READY and the
+constructor receipt. Missing media fails before exec; EACCES/noexec must fail
+at spawn with no exec receipt. Crashes require actual SIGSEGV, and hangs require
+SIGKILL from the wall watchdog, constructor constraint evidence and advancing
+host heartbeat while the child is still unreaped.
+
+The 15-line entry is not the whole trusted computing base. The resident
+broker/reaper, mount/file/hash checks, whitelist, runner, original dynamic loader
+and runtime libraries, and guest kernel are also trusted. The host source also
+contains simulation-only fixture preparation and assertions; those are not a
+camera deployment mechanism. Replacing a plugin requires a new reviewed build
+and hash pin, which changes the runner pin too. There is no SD-supplied manifest
+that can grant trust to new native code.

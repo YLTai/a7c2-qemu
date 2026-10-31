@@ -15,15 +15,24 @@ static int run(void) {
     if(index==5)return 20;
     int card=sr_card(1); if(card<0)return 21;
     int meta=openat(card,"plugin.meta",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
-    char version[9]; ssize_t count=sr_regular(meta)?read(meta,version,sizeof version):-1;
-    if(meta>=0)close(meta);
-    if(count!=8 || memcmp(version,"SDP1\1\0\0\0",8)){close(card);return 22;}
+    if(meta<0){close(card);return 41;}
+    if(!sr_regular(meta)){close(meta);close(card);return 42;}
+    char version[9]; ssize_t count=read(meta,version,sizeof version);
+    close(meta);
+    if(count!=8){close(card);return 43;}
+    if(memcmp(version,"SDP1\1\0\0\0",8)){close(card);return 22;}
     int input=openat(card,"plugin.so",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
-    close(card);
+    int open_error=errno;close(card);
+    if(input<0)return open_error==ENOENT?23:open_error==ELOOP?34:38;
+    struct stat size;
+    if(__fxstat(0,input,&size))return 39;
+    if(size.st_size>1024*1024 || size.st_size<=0)return 35;
+    if(!sr_regular(input))return 39;
     unsigned char elf[20];
-    if(!sr_regular(input)||read(input,elf,sizeof elf)!=sizeof elf || memcmp(elf,"\177ELF\2\1\1",7)
-        || elf[16]!=3 || elf[17]!=0 || elf[18]!=183 || elf[19]!=0)return 23;
-    if(sr_hash(input,sr_hashes[index]))return 24;
+    if(read(input,elf,sizeof elf)!=sizeof elf)return 37;
+    if(memcmp(elf,"\177ELF\2\1\1",7) || elf[16]!=3 || elf[17]!=0 || elf[18]!=183 || elf[19]!=0)return 36;
+    int digest=sr_hash(input,sr_hashes[index]);
+    if(digest)return digest==-2?24:40;
     struct stat verified;
     if(__fxstat(0,input,&verified))return 24;
     dprintf(1,"INPUT_MODE=%u\n",(unsigned)(verified.st_mode&0777));
