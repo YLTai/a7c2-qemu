@@ -121,6 +121,11 @@ jobs:
       - name: Verify full launcher without firmware
         timeout-minutes: 2
         run: python3 tools/ci/qemu-launcher-preflight.py
+      - name: Verify FL23 preflight and transaction failures without firmware
+        run: |
+          python3 -m unittest discover -s runtime/analysis -p test_fl23_preflight.py -v
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ci/test-fl23-menu-transaction.c -o "$RUNNER_TEMP/fl23-transaction-test"
+          "$RUNNER_TEMP/fl23-transaction-test"
       - name: Install guest helper cross compiler
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         run: |
@@ -137,6 +142,12 @@ jobs:
         run: |
           set -o pipefail
           bash start.sh --bodydata "$RUNNER_TEMP/sony-private-input/BODYDATA.DAT" --prepare-only 2>&1 | tee ci-logs/firmware-prepare.log
+      - name: Verify FL23 original ELF identity and menu data mappings
+        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        env:
+          MENU_BACKUP_SAVE: '0'
+          A7C2_SETTINGS_PERSIST: '0'
+        run: python3 runtime/analysis/fl23_preflight.py runtime/analysis/menu-root/usr/lib/appFw.so
       - name: Real headless firmware boot and screenshot
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         timeout-minutes: 20

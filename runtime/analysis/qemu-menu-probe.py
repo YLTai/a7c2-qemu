@@ -15,6 +15,11 @@ import time
 import signal
 import sys
 from contextlib import nullcontext
+from fl23_preflight import validate_launch_request
+
+# Check before staging initramfs, settings restore, or starting a guest.
+validate_launch_request(os.environ)
+
 from gpe_captures import raster_sources
 from headless_osd_capture import capture as capture_headless_osd
 from initramfs_identity import verify_image
