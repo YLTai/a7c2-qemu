@@ -248,11 +248,12 @@ and a fresh module-load receipt. DMM inputs are populated before protection.
 Failure to mount or validate aborts this disposable guest; no host sandbox or
 original firmware file is changed. Guest compatibility remains to be tested.
 
-The same preflight run confirms the current Look model at relative VA 0x5bc35b0
+The same preflight run confirms the product-model scalar at relative VA 0x5bc35b0
 is uniquely file-backed RW non-executable data at file offset 0x5bb35b0. The
-trusted observer now reads only that scalar after original frames, validates
-its complete live mapping/file identity, bounds values to 0..25 and logs at
-most 64 changes. It exposes no read-address request and never writes the model.
+trusted observer reads only that scalar after an original frame and validates
+its complete live mapping/file identity. It exposes no read-address request and
+never writes the scalar. Its semantics were initially misidentified; see the
+correction below. It does not establish a selected Creative Look.
 Native selection still requires reviewed menu screenshots and original input.
 
 Run `41196866130` at `68bb493` proves the read-only guest file protection is

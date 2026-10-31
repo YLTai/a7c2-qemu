@@ -107,8 +107,8 @@ def key(name,mouse=False):
     wait(lambda _:bool(edges()))
     inputs.append({'key':name,'submitted':True,'native_edges':edges()})
 
-def menu_frame(label):
-    capture(label)
+def menu_frame(label,refresh=True):
+    if refresh:capture(label)
     (OUT/('fl23-'+label+'.png')).write_bytes((OUT/'fl23-latest.png').read_bytes())
     RESULT.setdefault('menu_frames',[]).append({'label':label,
         'pixel_sha256':last_image['pixel_sha256'],'screen':last_image['firstboot_ui'],
@@ -138,8 +138,31 @@ def look_frame(name,label):
             digest=hashlib.sha256(im.convert('RGB').crop((112,0,640,115)).tobytes()).hexdigest()
         return last_image['firstboot_ui'].get('screen_id')==217 and digest==expected
     wait(matches)
-    menu_frame(label)
+    menu_frame(label,refresh=False)
     RESULT.setdefault('reviewed_look_titles',[]).append({'look':name,'label':label,'crop_sha256':expected})
+
+def select_chinese():
+    # Actual reviewed native language title + highlighted 简体中文 row from
+    # 41198426035. Intermediate language transitions need not be pixel-still;
+    # a dropped key cannot make us confirm an unrecognized language.
+    checks=(((0,0,200,52),'1b74c712d586d7c249ecd61d9144121a3b8707820187994ab1cc4fafb1f5317f'),
+            ((80,275,560,331),'aabab1ac8ac807235414081c1a50b9e2a06e3a0abacfce474bfe1f4a05acf2a2'))
+    def selected():
+        capture('language-selection')
+        if last_image['firstboot_ui'].get('screen_id')!=301:return False
+        with Image.open(OUT/'fl23-latest.png') as opened:
+            im=opened.convert('RGB')
+            return all(hashlib.sha256(im.crop(box).tobytes()).hexdigest()==digest for box,digest in checks)
+    for n in range(49):
+        if selected():
+            time.sleep(.5)
+            if selected():
+                menu_frame('simplified-chinese',refresh=False)
+                RESULT['language_selection']={'reviewed_title_and_highlight':True,'down_inputs':n}
+                return
+        if n==48:break
+        key('DOWN');time.sleep(.8)
+    raise RuntimeError('language_selection_unverified')
 
 def start(enabled):
     global vm
@@ -221,7 +244,7 @@ try:
     PHASE='enabled_boot';start(True)
     initial=capture('language')
     PHASE='language_navigation'
-    firstboot.select_simplified_chinese(initial,console,capture,lambda:key('DOWN'),wait)
+    select_chinese()
     # The selector already verified changed and stable LCD after its final key.
     # Confirm once, then require the known next page instead of a redundant
     # second full-frame stability pass on the language page.
@@ -283,6 +306,7 @@ except Exception as error:
              'guest_unhealthy','invalid_private_run_path','firstboot_incomplete','input_budget',
              'persistent_instance','guest_wait','close_incomplete','negative_rollback_unverified',
              'creative_look_page_unverified',
+             'language_selection_unverified',
              'negative_boot_failed_before_broker','negative_broker_wait'}
     RESULT['failure_reason']=str(error) if str(error) in allowed else 'unclassified'
     if vm:

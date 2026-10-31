@@ -156,6 +156,9 @@ instructions or shell access to display bytecode. Request it with
 with `MENU_BACKUP_SAVE=0` and `A7C2_SETTINGS_PERSIST=0`. Persistent instances,
 restored settings, mock backends, firmware overlays and other firmware identities
 are rejected. Disabling requires a fresh VM with `A7C2_FL23_MENU=0`.
+The original Intelligent Auto restriction is retained: use the existing MODE
+dial control to choose P before opening Exposure/Color > Color/Tone > Creative
+Look. The broker does not override native shooting-mode restrictions.
 
 The launcher and broker pin original appFw identity, ELF layout, live private
 file mappings, original bytes and native Backup originals. Only seven fixed AP
