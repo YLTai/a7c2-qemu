@@ -164,6 +164,45 @@ def select_chinese():
         key('DOWN');time.sleep(.8)
     raise RuntimeError('language_selection_unverified')
 
+def verify_ui_readback():
+    # Reviewed original screenshots from 41201197793. These are native menu
+    # and parameter readbacks, not a separate current-Look getter or CP proof.
+    row=(138,96,636,149);edit=(92,350,626,405);bar=(135,350,618,404)
+    zero='f0a4bc4081bfd38ae881caf161d71bccd6817bef1401b76c83628e8ba0f08d7b'
+    one='228aec7c84b2da6fbb5a3df3309ca956cd214afe1992d59eb14aa3745666e5e8'
+    read_zero='7e94f27e5ff436bade062026a894258709ed953d94cdcf5bc2eb77688a0b6d57'
+    read_one='7ee1be0b835f9321e3fa53ca5aba11ba84ac2a37899d3053b0c15e99ecca61c2'
+    checks=(('fl2-confirmed',714,row,'7885033f9a64bad51998c00405f7cbb178b3e4c4e2564ce90c7cc9e26bed01c5'),
+            ('fl3-confirmed',714,row,'a397fb326f06db1b21ceeede2f37edc7be91cdb8babb5bc851cfba1a033f0ca1'),
+            ('fl2-reopened',217,bar,read_zero),('fl3-reopened',217,bar,read_zero),
+            ('fl3-parameter-initial',218,edit,zero),('fl3-parameter-incremented',218,edit,one),
+            ('fl3-parameter-reopened',217,bar,read_one),('fl3-parameter-restoring',218,edit,one),
+            ('fl3-parameter-restored',218,edit,zero),('fl3-restored-reopened',217,bar,read_zero))
+    verified=[]
+    for label,screen,box,digest in checks:
+        frame=next(f for f in RESULT['menu_frames'] if f['label']==label)
+        with Image.open(OUT/('fl23-'+label+'.png')) as im:
+            actual=hashlib.sha256(im.convert('RGB').crop(box).tobytes()).hexdigest()
+        if frame['screen'].get('screen_id')!=screen or actual!=digest:
+            RESULT['failed_ui_readback']=label
+            raise RuntimeError('original_ui_readback_mismatch')
+        verified.append({'label':label,'crop_sha256':digest,'screen_id':screen})
+    RESULT.update(selection_verified=True,parameter_readback_verified=True,
+        selection_readback_source='original menu value after OK and reopened native Look page',
+        separate_current_look_getter_verified=False,
+        parameter_readback={'FL2_initial':[0,0,0,0,0,4,3,1],
+                            'FL3_initial':[0,0,0,0,0,4,3,1],
+                            'FL3_contrast_confirmed_reopened_restored':[0,1,0]},
+        reviewed_ui_readbacks=verified)
+
+def verify_files(output):
+    expected={'/usr/lib/appFw.so':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b',
+              '/setting/Backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47',
+              '/seed-backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47'}
+    for name,digest in expected.items():
+        if not re.search(r'(?m)^'+digest+r'\s+'+re.escape(name)+r'\r?$',output):
+            raise RuntimeError('guest_original_file_changed')
+
 def start(enabled):
     global vm
     os.environ['A7C2_FL23_MENU']='1' if enabled else '0'
@@ -184,11 +223,7 @@ def start(enabled):
     output=command('fl23_status')
     expected='FL23_BINDINGS fl2=10 fl3=11' if enabled else 'FL23_BINDINGS fl2=0 fl3=0'
     if expected not in output:raise RuntimeError('binding_readback_mismatch')
-    expected_files={'/usr/lib/appFw.so':'2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b',
-                    '/setting/Backup.bin':'3dab4f0d6b7790f4a7798034b57f43bfe3255c39dc6da2897fc288b3a218fe47'}
-    for name,digest in expected_files.items():
-        if not re.search(r'(?m)^'+digest+r'\s+'+re.escape(name)+r'\r?$',output):
-            raise RuntimeError('guest_original_file_changed')
+    verify_files(output)
     ready='FL23_MENU_READY ap_fields=7 backup_bindings=2 permissions_restored=1' in console()
     if ready!=enabled:raise RuntimeError('broker_receipt_mismatch')
     storage=console()
@@ -245,7 +280,7 @@ try:
     initial=capture('language')
     PHASE='language_navigation'
     select_chinese()
-    # The selector already verified changed and stable LCD after its final key.
+    # The selector already verified the actual target title/highlight twice.
     # Confirm once, then require the known next page instead of a redundant
     # second full-frame stability pass on the language page.
     key('ENTER')
@@ -291,14 +326,17 @@ try:
     key('DOWN');menu_frame('fl3-parameter-restored')
     key('ENTER');menu_frame('fl3-restored-confirmed')
     key('RIGHT');look_frame('FL3','fl3-restored-reopened')
-    command('fl23_status')
-    # A real current menu image is required before selecting any unreviewed row.
-    # Subsequent iterations add the reviewed navigation and selection assertions.
-    RESULT['menu_navigation_pending']=True
+    verify_ui_readback()
+    output=command('fl23_status');verify_files(output)
+    if 'FL23_BINDINGS fl2=10 fl3=11' not in output:raise RuntimeError('binding_readback_mismatch')
+    RESULT['files_and_bindings_unchanged_after_ui']=True
     if not DISCOVERY:
         PHASE='negative_rollback';close();negative_rollback()
         PHASE='disabled_restart';start(False);close()
         RESULT['fresh_vm_bindings_restored']=True
+        RESULT['passed']=bool(RESULT['menu_verified'] and RESULT['selection_verified'] and
+            RESULT['parameter_readback_verified'] and RESULT['native_rollback_verified'] and
+            RESULT['fresh_vm_bindings_restored'] and len(RESULT['cases'])==3)
 except Exception as error:
     RESULT.update(failed_phase=PHASE,error_type=type(error).__name__)
     allowed={'plugin_request_failed','binding_readback_mismatch','guest_original_file_changed',
@@ -307,6 +345,7 @@ except Exception as error:
              'persistent_instance','guest_wait','close_incomplete','negative_rollback_unverified',
              'creative_look_page_unverified',
              'language_selection_unverified',
+             'original_ui_readback_mismatch',
              'negative_boot_failed_before_broker','negative_broker_wait'}
     RESULT['failure_reason']=str(error) if str(error) in allowed else 'unclassified'
     if vm:
