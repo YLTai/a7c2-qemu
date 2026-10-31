@@ -210,6 +210,11 @@ try:
     # Arrow-only exploration changes focus/categories without confirming rows.
     for n,name in enumerate(('LEFT','LEFT','DOWN','DOWN','RIGHT')):
         key(name);menu_frame('category-'+str(n)+'-'+name.lower())
+    # Reviewed original Exposure/Color category: Color/Tone is group 6.
+    for _ in range(5):key('DOWN')
+    menu_frame('color-tone-group')
+    for n,name in enumerate(('RIGHT','DOWN','RIGHT')):
+        key(name);menu_frame('color-tone-'+str(n)+'-'+name.lower())
     # A real current menu image is required before selecting any unreviewed row.
     # Subsequent iterations add the reviewed navigation and selection assertions.
     RESULT['menu_navigation_pending']=True
