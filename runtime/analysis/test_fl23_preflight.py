@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from unittest.mock import patch
 
 from fl23_preflight import (Rejected, _load_segments, _resolve, inspect_original,
-                            require_volatile_profile, validate_launch_request)
+                            require_volatile_profile, validate_launch_request,
+                            audit_original, _section_audit)
 
 
 def elf(segments):
@@ -25,6 +27,37 @@ class PreflightTests(unittest.TestCase):
     def test_identity_cannot_be_bypassed_with_plausible_elf(self):
         with self.assertRaisesRegex(Rejected, '^source_identity$'):
             inspect_original(elf([(512, 0x9000, 512, 1024, 6)]))
+        with self.assertRaisesRegex(Rejected, '^source_identity$'):
+            audit_original(elf([(512, 0x9000, 512, 1024, 5)]))
+
+    def test_readonly_audit_does_not_relax_strict_permission_check(self):
+        data = elf([(512, 0x9000, 512, 512, 5)])
+        fields = [('a', 600, bytes(2), b'\1\1')]
+        mappings = _resolve(data, _load_segments(data), fields, audit=True)
+        self.assertTrue(mappings[0]['elf_executable'])
+        with self.assertRaisesRegex(Rejected, '^field_permissions$'):
+            _resolve(data, _load_segments(data), fields)
+        self.assertEqual(_section_audit(data, mappings), {'section_table_valid': False})
+
+    def test_section_audit_requires_entire_page_without_executable_alias(self):
+        data = bytearray(16384)
+        struct.pack_into('<Q', data, 40, 256)
+        struct.pack_into('<HH', data, 58, 64, 2)
+        struct.pack_into('<IIQQQQIIQQ', data, 320, 0, 1, 2, 0x10000, 4096,
+                         4096, 0, 0, 1, 0)
+        fields = [('selection', 4096, bytes(2), b'\1\1')]
+        mappings = [{'id': 'selection', 'relative_va': 0x10000, 'size': 2}]
+        with patch('fl23_preflight.FIELDS', fields):
+            self.assertTrue(_section_audit(data, mappings)['fields'][0]['nonexec_data_page_4096'])
+            struct.pack_into('<Q', data, 320 + 32, 200)
+            self.assertFalse(_section_audit(data, mappings)['fields'][0]['nonexec_data_page_4096'])
+            struct.pack_into('<Q', data, 320 + 32, 4096)
+            struct.pack_into('<Q', data, 320 + 8, 6)
+            self.assertFalse(_section_audit(data, mappings)['fields'][0]['nonexec_data_page_4096'])
+            struct.pack_into('<Q', data, 320 + 8, 2)
+            struct.pack_into('<IIQQQQIIQQ', data, 256, 0, 1, 6, 0x10000,
+                             8192, 16, 0, 0, 1, 0)
+            self.assertFalse(_section_audit(data, mappings)['fields'][0]['nonexec_data_page_4096'])
 
     def test_segment_mapping_is_not_a_global_delta(self):
         data = elf([(512, 0x9000, 512, 1024, 6), (2048, 0x18000, 512, 512, 4)])

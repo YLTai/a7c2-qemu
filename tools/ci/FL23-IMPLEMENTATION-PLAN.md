@@ -100,10 +100,29 @@ this environment must not download firmware, and remote CI is deferred. Thus no
 guest writes, Backup changes, menu appearance, selection, native readback or
 complete color behavior have been tested. Next: coordinate CI preflight, inspect
 the verified mappings in private staging, then implement the trusted guest adapter
-and Backup transaction at a demonstrated pre-constructor point. Do not remove the
+and Backup transaction before demonstrated menu-model initialization. The current
+hook is after `dlopen` (and thus ELF constructors) but before
+`Application_System_Init`; it is not a pre-ELF-constructor hook. Do not remove the
 launch gate merely because host tests pass.
 
 No remote write or Actions dispatch made.
 This isolation environment has no configured secrets or outbound identities;
 public repository fetch worked. CI execution is intentionally deferred to avoid
 concurrent external changes with the previous task.
+
+## First coordinated remote preflight
+
+After coordination, commit `4414b51aeb715a018a9c20fb50189c27f9ad03cd` was
+fast-forward pushed from the expected `e600c9c` head to `ci/qemu-actions`.
+[Actions run 41191522158](https://github.com/YLTai/a7c2-qemu/actions/runs/41191522158)
+passed host tests, exact QEMU source/binary cache checks, sandbox and synthetic
+launcher checks, and private firmware import. Original ELF preflight rejected
+`field_permissions`; therefore subsequent real guest tests were skipped.
+No FL23 guest modifications ran. The source hash matched before the permission
+failure; the run does not establish that all seven fields passed validation.
+
+A follow-up read-only audit emits only the seven fixed fields' virtual offsets,
+sizes, ELF permissions, and non-executable section/page classification. It never
+prints firmware contents and does not relax the launch or write gate. Determine
+whether the fields occupy data-only pages within an executable PT_LOAD segment
+before designing a bounded permission transition. No W+X mapping is authorized.

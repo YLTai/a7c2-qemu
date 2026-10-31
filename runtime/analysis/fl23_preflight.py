@@ -77,7 +77,7 @@ def _load_segments(data):
     return segments
 
 
-def _resolve(data, segments, fields):
+def _resolve(data, segments, fields, *, audit=False):
     result = []
     for name, offset, before, after in fields:
         size = len(before)
@@ -86,7 +86,7 @@ def _resolve(data, segments, fields):
             raise Rejected('field_mapping')
         start, va, _, _, flags = matches[0]
         # Readable non-executable data only; do not make code writable.
-        if not flags & 4 or flags & 1:
+        if not audit and (not flags & 4 or flags & 1):
             raise Rejected('field_permissions')
         live = va + offset - start
         if sum(s[1] <= live and live + size <= s[1] + s[3] for s in segments) != 1:
@@ -94,8 +94,51 @@ def _resolve(data, segments, fields):
         if data[offset:offset + size] != before or len(after) != size:
             raise Rejected('field_original')
         result.append({'id': name, 'relative_va': live, 'size': size,
-                       'elf_writable': bool(flags & 2)})
+                       'elf_writable': bool(flags & 2),
+                       'elf_readable': bool(flags & 4),
+                       'elf_executable': bool(flags & 1)})
     return result
+
+
+def _section_audit(data, mappings):
+    """Metadata only; cannot authorize a guest write or relax strict preflight."""
+    shoff = struct.unpack_from('<Q', data, 40)[0]
+    shsize, shnum = struct.unpack_from('<HH', data, 58)
+    if (shsize != 64 or not 0 < shnum < 65535 or shoff < 64 or
+            shoff + shnum * shsize > len(data)):
+        return {'section_table_valid': False}
+    sections = []
+    for i in range(shnum):
+        _, typ, flags, va, offset, size, _, _, _, _ = struct.unpack_from(
+            '<IIQQQQIIQQ', data, shoff + i * shsize)
+        if va + size >= 1 << 64 or (typ != 8 and offset + size > len(data)):
+            return {'section_table_valid': False}
+        sections.append((typ, flags, va, offset, size))
+    result = []
+    for mapping, (_, offset, before, _) in zip(mappings, FIELDS):
+        va = mapping['relative_va']
+        matches = [s for s in sections if s[1] & 2 and s[0] != 8 and
+                   s[3] <= offset and offset + len(before) <= s[3] + s[4] and
+                   s[2] + offset - s[3] == va]
+        page_start = va & ~4095
+        page_end = (va + len(before) + 4095) & ~4095
+        data_page = (len(matches) == 1 and matches[0][0] == 1 and
+                     not matches[0][1] & 4 and matches[0][2] <= page_start and
+                     page_end <= matches[0][2] + matches[0][4] and
+                     not any(s[1] & 6 == 6 and s[2] < page_end and
+                             page_start < s[2] + s[4] for s in sections))
+        result.append({**mapping, 'unique_allocated_section': len(matches) == 1,
+                       'nonexec_data_page_4096': bool(data_page)})
+    return {'section_table_valid': True, 'fields': result}
+
+
+def audit_original(data):
+    # Fixed-field metadata only. In particular, this does not return instructions
+    # or permit an unknown image merely because its program headers look valid.
+    if hashlib.sha256(data).hexdigest() != SOURCE_SHA256:
+        raise Rejected('source_identity')
+    mappings = _resolve(data, _load_segments(data), FIELDS, audit=True)
+    return _section_audit(data, mappings)
 
 
 def inspect_original(data):
@@ -111,9 +154,16 @@ def main():
     args = parser.parse_args()
     try:
         require_volatile_profile(os.environ)
-        fields = inspect_original(args.original_appfw.read_bytes())
+        data = args.original_appfw.read_bytes()
+        fields = inspect_original(data)
     except Rejected as error:
-        print(json.dumps({'passed': False, 'reason': str(error)}))
+        result = {'passed': False, 'reason': str(error), 'guest_enabled': False}
+        if str(error) == 'field_permissions':
+            try:
+                result['mapping_audit'] = audit_original(data)
+            except Rejected as audit_error:
+                result['audit_reason'] = str(audit_error)
+        print(json.dumps(result))
         return 1
     except OSError:
         print(json.dumps({'passed': False, 'reason': 'source_unavailable'}))
