@@ -10,6 +10,10 @@ on:
         description: FL23 diagnostic iteration only (final validation must use false)
         type: boolean
         default: false
+      lifecycle_audit:
+        description: Private firmware static lifecycle audit only; no target execution
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -23,6 +27,9 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Reject mixed static audit and firmware execution
+        if: inputs.lifecycle_audit && inputs.firmware
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -142,15 +149,26 @@ jobs:
         timeout-minutes: 3
         run: bash tools/ci/usb-noop-smoke.sh
       - name: Download private firmware input
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        if: github.event_name == 'workflow_dispatch' && (inputs.firmware || inputs.lifecycle_audit)
         env:
           SONY_FIRMWARE_URL: ${{ secrets.SONY_FIRMWARE_URL }}
         run: python3 tools/ci/download-firmware.py
       - name: Verify and import pinned Sony firmware
-        if: github.event_name == 'workflow_dispatch' && inputs.firmware
+        if: github.event_name == 'workflow_dispatch' && (inputs.firmware || inputs.lifecycle_audit)
         run: |
           set -o pipefail
-          bash start.sh --bodydata "$RUNNER_TEMP/sony-private-input/BODYDATA.DAT" --prepare-only 2>&1 | tee ci-logs/firmware-prepare.log
+          if [ '${{ inputs.lifecycle_audit }}' = true ]; then
+            if ! bash start.sh --bodydata "$RUNNER_TEMP/sony-private-input/BODYDATA.DAT" --prepare-only > "$RUNNER_TEMP/lifecycle-prepare.private.log" 2>&1; then
+              echo 'Private firmware preparation failed; raw diagnostics not exported'
+              exit 1
+            fi
+          else
+            bash start.sh --bodydata "$RUNNER_TEMP/sony-private-input/BODYDATA.DAT" --prepare-only 2>&1 | tee ci-logs/firmware-prepare.log
+          fi
+      - name: Analyze pinned original lifecycle without executing firmware
+        if: github.event_name == 'workflow_dispatch' && inputs.lifecycle_audit
+        timeout-minutes: 5
+        run: python3 tools/ci/lifecycle-static.py
       - name: Verify FL23 original ELF identity and menu data mappings
         if: github.event_name == 'workflow_dispatch' && inputs.firmware
         env:
@@ -207,6 +225,7 @@ jobs:
             ci-logs/*.log
             ci-logs/build-identity.json
             ci-logs/usb-noop-result.json
+            ci-logs/lifecycle-static.json
             source/ci-build-receipt.json
             source/build-programs.sha256
           retention-days: 7
