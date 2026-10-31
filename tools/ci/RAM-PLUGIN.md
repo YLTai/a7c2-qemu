@@ -96,3 +96,53 @@ Dispatch `qemu-build.yml` on `ci/qemu-actions` with `firmware=true`. The existin
 `SONY_FIRMWARE_URL` repository secret supplies the temporary input. QEMU's exact
 source/binary caches are reused. Public artifacts contain only approved actual
 emulator screenshots and fixed-schema results, never firmware or extracted images.
+
+## Electronic shutter sound feasibility (blocked)
+
+Read-only review pinned the upstream research to
+[`QAQLeonard/a7c2-fl23-research` at `ef7db116e13e37be91e9af20360dc9bba8d64a9b`](https://github.com/QAQLeonard/a7c2-fl23-research/tree/ef7db116e13e37be91e9af20360dc9bba8d64a9b).
+Its supported target is ILCE-7CM2 firmware 2.01. No upstream tool was executed.
+
+[`candidate.py`](https://github.com/QAQLeonard/a7c2-fl23-research/blob/ef7db116e13e37be91e9af20360dc9bba8d64a9b/src/shutter_sound/candidate.py)
+changes a five-byte CP selector table at file offset `0x393570` and an
+18-byte gate at `0x3935bc`. The gate uses the per-capture electronic flag;
+this is electronic shutter sound, not an ordinary beep switch. Its AP registry
+preflight requires native sound kinds 1, 2 and 3. The normal mode-3 path uses
+kind 3; the upstream counter-limited path also has mode-1 behavior.
+The old single-site patch was shown to leak sound on mechanical captures and
+must not be substituted. Audio Signals Off remains a separate native mute policy.
+Upstream's disable operation is a muted electronic gate, not the stock inverse.
+Its seven CP instruction guards and two AP getter guards are necessary context;
+neither file offsets nor the synthetic `+0x108000` mapping prove a live CP address.
+[`trial.py`](https://github.com/QAQLeonard/a7c2-fl23-research/blob/ef7db116e13e37be91e9af20360dc9bba8d64a9b/src/shutter_sound/trial.py)
+writes the CP program file and requires a cold reload. Temporary custom-sound
+audition does not remove the prerequisite of that already-enabled CP program.
+Its synthetic Thumb selector tests are not a complete CP boot or audio-output
+test; the playback-constructor trace explicitly excludes DSP decoding/output.
+
+The current QEMU launcher (`runtime/analysis/qemu-kernel-probe.sh`) starts AP
+Cortex-A35 CPUs on the virtual board. Our CP protocol models do not execute the
+original Thumb shutter selector, and there is no verified live CP code mapping
+for the above offsets. In `runtime/analysis/device-models/audio-device.c`,
+`2004:0203` and `200d:032b` playback requests explicitly fail as unsupported.
+Sound-table registration, source-buffer readback and volume/path configuration
+are separate capabilities; none proves a capture-triggered playback or sound.
+
+Consequently no shutter-enable bytecode opcode, RAM patch, persistent program
+change, setting change or fabricated success result was added. Patching a copy
+of the file in RAM would not establish that the executing CP consumed it.
+This is a missing execution/audio implementation, not an approval denial.
+No new Actions run was needed for this read-only feasibility finding; the last
+executed Hello World regression remains run 41176305947.
+
+To continue toward an actual enable capability, first establish either an
+executing CP with verified code ownership/mapping/cache synchronization and
+capture linkage, or an explicitly scoped virtual audio path whose claims remain
+distinct from original CP execution. A RAM-only adapter must then validate the
+firmware and original bytes, serialize updates, verify readback/rollback and
+prove that fresh instances restore stock behavior, without saving settings or
+changing source firmware. CP execution and audio playback are substantial missing
+subsystems, not permissions that can be fixed by disabling isolation. Isolated
+instruction tests could validate branch semantics only. Menu visibility, runtime
+selection, capture-triggered audio requests and actual audio output remain
+unverified for this plugin platform.
