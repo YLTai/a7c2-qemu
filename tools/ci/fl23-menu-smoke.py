@@ -127,6 +127,20 @@ def program_mode():
     RESULT['mode_input']={'position':'P','native_event':observed()}
     time.sleep(3);menu_frame('program-mode')
 
+def look_frame(name,label):
+    # Reviewed real frames from 41200034402: native title + distinct FL2/FL3
+    # label; the product-model scalar is deliberately not selection evidence.
+    expected={'FL2':'d2db5c6535ec18e89de9a6c6ca1442bc25008b07b23398ea79554a900f683c2b',
+              'FL3':'fed8bda57243d2a5514af7e99b6923d7474fe9e1455819db23009ba32b3aed28'}[name]
+    def matches(_):
+        capture(label)
+        with Image.open(OUT/'fl23-latest.png') as im:
+            digest=hashlib.sha256(im.convert('RGB').crop((112,0,640,115)).tobytes()).hexdigest()
+        return last_image['firstboot_ui'].get('screen_id')==217 and digest==expected
+    wait(matches)
+    menu_frame(label)
+    RESULT.setdefault('reviewed_look_titles',[]).append({'look':name,'label':label,'crop_sha256':expected})
+
 def start(enabled):
     global vm
     os.environ['A7C2_FL23_MENU']='1' if enabled else '0'
@@ -236,8 +250,25 @@ try:
         key(name);menu_frame('color-tone-'+str(n)+'-'+name.lower())
     if last_image['firstboot_ui'].get('screen_id')!=217:
         raise RuntimeError('creative_look_page_unverified')
-    for n in range(18):
-        key('DOWN');menu_frame('look-list-'+str(n+1).zfill(2))
+    for _ in range(6):key('DOWN')
+    look_frame('FL2','fl2-preview')
+    key('ENTER');menu_frame('fl2-confirmed')
+    key('RIGHT');look_frame('FL2','fl2-reopened')
+    key('DOWN');look_frame('FL3','fl3-preview')
+    RESULT['menu_verified']=True
+    key('ENTER');menu_frame('fl3-confirmed')
+    key('RIGHT');look_frame('FL3','fl3-reopened')
+    # Original right-side parameter control: inspect, increment once, confirm,
+    # reopen, then decrement once to restore the initial parameter.
+    key('RIGHT');menu_frame('fl3-parameter-initial')
+    key('UP');menu_frame('fl3-parameter-incremented')
+    key('ENTER');menu_frame('fl3-parameter-confirmed')
+    key('RIGHT');menu_frame('fl3-parameter-reopened')
+    key('RIGHT');menu_frame('fl3-parameter-restoring')
+    key('DOWN');menu_frame('fl3-parameter-restored')
+    key('ENTER');menu_frame('fl3-restored-confirmed')
+    key('RIGHT');look_frame('FL3','fl3-restored-reopened')
+    command('fl23_status')
     # A real current menu image is required before selecting any unreviewed row.
     # Subsequent iterations add the reviewed navigation and selection assertions.
     RESULT['menu_navigation_pending']=True
